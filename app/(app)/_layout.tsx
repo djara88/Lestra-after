@@ -49,8 +49,9 @@ export default function AppLayout() {
     return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator /></View>;
   }
 
-  return <Tabs screenOptions={{ headerShown: false, tabBarLabelStyle: { fontSize: 12 } }}>
+  return <Tabs screenOptions={{ headerShown: false, tabBarLabelStyle: { fontSize: 11 } }}>
     <Tabs.Screen name="index" options={{ title: 'Hoy' }} />
+    <Tabs.Screen name="estudio" options={{ title: 'Estudio' }} />
     <Tabs.Screen name="agenda" options={{ title: 'Agenda' }} />
     <Tabs.Screen name="agregar" options={{ title: 'Agregar' }} />
     <Tabs.Screen name="familia" options={{ title: 'Familia' }} />
