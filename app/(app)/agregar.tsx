@@ -24,10 +24,10 @@ function prettyBytes(value:number){if(value<1024)return `${value} B`; if(value<1
 function safeFileName(name:string){return name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]/g,'_').replace(/_+/g,'_').slice(-120)||'documento';}
 
 export default function Add(){
-  const [context,setContext]=useState<Context>({}); const [mode,setMode]=useState<Mode>('academic'); const [busy,setBusy]=useState(false); const [uploading,setUploading]=useState(false);
+  const [context,setContext]=useState<Context>({}); const [mode,setMode]=useState<Mode>('academic'); const [busy,setBusy]=useState(false); const [uploading,setUploading]=useState(false); const [deletingId,setDeletingId]=useState<string|null>(null);
   const [studentId,setStudentId]=useState(''); const [title,setTitle]=useState(''); const [date,setDate]=useState(''); const [time,setTime]=useState('18:00'); const [detail,setDetail]=useState('');
   const [academicType,setAcademicType]=useState('task'); const [category,setCategory]=useState('sport'); const [documents,setDocuments]=useState<SourceDocument[]>([]);
-  useEffect(()=>{loadContext();loadDocuments();},[]);
+  useEffect(()=>{void loadContext();void loadDocuments();},[]);
   const students=context.students??[]; const selected=useMemo(()=>students.find(s=>s.id===studentId),[students,studentId]);
 
   async function loadContext(){const {data}=await supabase.rpc('after_my_context');const ctx=(data??{}) as Context;setContext(ctx);const first=ctx.students?.[0];if(first)setStudentId(current=>current||first.id);}
@@ -61,6 +61,29 @@ export default function Add(){
     }finally{setUploading(false);}
   }
 
+  async function deleteDocument(documentId:string){
+    if(deletingId)return;
+    setDeletingId(documentId);
+    try{
+      const {data:path,error:pathError}=await supabase.rpc('after_get_source_document_delete_path',{p_document_id:documentId});
+      if(pathError||typeof path!=='string'||!path)throw new Error('not_allowed');
+      const {error:storageError}=await supabase.storage.from('after-source-documents').remove([path]);
+      if(storageError)throw storageError;
+      const {data:deleted,error:deleteError}=await supabase.rpc('after_delete_source_document',{p_document_id:documentId,p_storage_path:path});
+      if(deleteError||deleted!==true)throw new Error('metadata');
+      await loadDocuments();
+    }catch{
+      Alert.alert('No pudimos eliminar el documento','Solo quien lo subió puede eliminarlo. Si el archivo ya fue retirado pero el registro permanece, vuelve a intentar.');
+    }finally{setDeletingId(null);}
+  }
+
+  function confirmDelete(doc:SourceDocument){
+    Alert.alert('Eliminar documento','Se eliminará el archivo privado y su registro de After. Esta acción no se puede deshacer.',[
+      {text:'Cancelar',style:'cancel'},
+      {text:'Eliminar',style:'destructive',onPress:()=>void deleteDocument(doc.id)},
+    ]);
+  }
+
   async function save(){
     const parsedTitle=titleSchema.safeParse(title); const parsedDate=dateSchema.safeParse(date); const parsedTime=timeSchema.safeParse(time);
     if(!studentId||!parsedTitle.success||!parsedDate.success||!parsedTime.success) return Alert.alert('Revisa los datos','Selecciona un alumno, título, fecha y hora válidos. Usa fecha AAAA-MM-DD y hora HH:MM.');
@@ -79,7 +102,7 @@ export default function Add(){
     <Text style={s.label}>Alumno</Text><View style={s.chips}>{students.map(st=><Pressable key={st.id} onPress={()=>setStudentId(st.id)} style={[s.chip,studentId===st.id&&s.chipActive]}><Text style={[s.chipText,studentId===st.id&&s.chipTextActive]}>{st.preferred_name||st.first_name}</Text></Pressable>)}</View>
 
     <View style={s.documentCard}><View style={{flex:1}}><Text style={s.heading}>Documento o imagen</Text><Text style={s.muted}>PDF, JPG, PNG o WEBP · máximo 8 MB · almacenamiento privado.</Text></View><Pressable disabled={uploading||!selected} onPress={uploadDocument} style={[s.secondaryButton,(uploading||!selected)&&s.disabled]}><Text style={s.secondaryText}>{uploading?'Subiendo…':'Adjuntar'}</Text></Pressable></View>
-    {documents.length>0?<View style={s.history}><Text style={s.heading}>Subidos recientemente</Text>{documents.slice(0,5).map(doc=><View key={doc.id} style={s.docRow}><View style={{flex:1}}><Text numberOfLines={1} style={s.docName}>{doc.original_name}</Text><Text style={s.meta}>{doc.student_name||'Alumno'} · {prettyBytes(Number(doc.size_bytes))}</Text></View><Text style={s.status}>Protegido</Text></View>)}</View>:null}
+    {documents.length>0?<View style={s.history}><Text style={s.heading}>Subidos recientemente</Text>{documents.slice(0,5).map(doc=><View key={doc.id} style={s.docRow}><View style={{flex:1}}><Text numberOfLines={1} style={s.docName}>{doc.original_name}</Text><Text style={s.meta}>{doc.student_name||'Alumno'} · {prettyBytes(Number(doc.size_bytes))}</Text></View><View style={s.docActions}><Text style={s.status}>Protegido</Text><Pressable disabled={deletingId===doc.id} onPress={()=>confirmDelete(doc)}><Text style={s.deleteText}>{deletingId===doc.id?'Eliminando…':'Eliminar'}</Text></Pressable></View></View>)}</View>:null}
 
     <View style={s.segment}><Pressable onPress={()=>setMode('academic')} style={[s.segmentButton,mode==='academic'&&s.segmentActive]}><Text style={[s.segmentText,mode==='academic'&&s.segmentTextActive]}>Estudio</Text></Pressable><Pressable onPress={()=>setMode('event')} style={[s.segmentButton,mode==='event'&&s.segmentActive]}><Text style={[s.segmentText,mode==='event'&&s.segmentTextActive]}>Actividad</Text></Pressable></View>
     <Text style={s.label}>{mode==='academic'?'Tipo':'Categoría'}</Text><View style={s.chips}>{(mode==='academic'?academicTypes:eventCategories).map(([value,label])=><Pressable key={value} onPress={()=>mode==='academic'?setAcademicType(value):setCategory(value)} style={[s.chip,(mode==='academic'?academicType:category)===value&&s.chipActive]}><Text style={[s.chipText,(mode==='academic'?academicType:category)===value&&s.chipTextActive]}>{label}</Text></Pressable>)}</View>
@@ -91,4 +114,4 @@ export default function Add(){
   </ScrollView></SafeAreaView>;
 }
 
-const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#F7F7F5'},body:{padding:24,gap:12},kicker:{fontSize:12,fontWeight:'800',letterSpacing:1.3,color:'#777'},title:{fontSize:32,lineHeight:38,fontWeight:'800'},copy:{fontSize:15,lineHeight:22,color:'#5C626D',marginBottom:8},heading:{fontSize:16,fontWeight:'800'},muted:{fontSize:12,lineHeight:18,color:'#6D737C'},documentCard:{flexDirection:'row',gap:12,alignItems:'center',backgroundColor:'#FFF',borderWidth:1,borderColor:'#E0E3DF',borderRadius:17,padding:15},secondaryButton:{paddingVertical:10,paddingHorizontal:14,borderRadius:12,backgroundColor:'#111318'},secondaryText:{color:'#FFF',fontWeight:'800',fontSize:13},history:{backgroundColor:'#FFF',borderWidth:1,borderColor:'#E0E3DF',borderRadius:17,padding:15,gap:4},docRow:{flexDirection:'row',alignItems:'center',gap:10,paddingVertical:10,borderTopWidth:1,borderTopColor:'#EEEFEA'},docName:{fontSize:14,fontWeight:'800'},meta:{fontSize:11,color:'#747B86',marginTop:2},status:{fontSize:11,fontWeight:'800',color:'#46644C'},segment:{flexDirection:'row',backgroundColor:'#E9EAE7',padding:4,borderRadius:14,marginTop:4},segmentButton:{flex:1,padding:11,alignItems:'center',borderRadius:11},segmentActive:{backgroundColor:'#FFF'},segmentText:{fontWeight:'700',color:'#6D737C'},segmentTextActive:{color:'#111318'},label:{fontSize:13,fontWeight:'800',marginTop:6},chips:{flexDirection:'row',flexWrap:'wrap',gap:8},chip:{paddingVertical:9,paddingHorizontal:12,borderRadius:999,borderWidth:1,borderColor:'#D9DBD7',backgroundColor:'#FFF'},chipActive:{backgroundColor:'#111318',borderColor:'#111318'},chipText:{fontSize:13,fontWeight:'700',color:'#4F5660'},chipTextActive:{color:'#FFF'},input:{backgroundColor:'#FFF',borderWidth:1,borderColor:'#E0E3DF',borderRadius:15,padding:15,fontSize:16},row:{flexDirection:'row',gap:10},flex:{flex:1},time:{width:105},notes:{minHeight:92,textAlignVertical:'top'},private:{fontSize:12,lineHeight:18,color:'#6E5560'},button:{backgroundColor:'#111318',borderRadius:16,padding:17,alignItems:'center',marginTop:4},buttonText:{color:'#FFF',fontSize:16,fontWeight:'800'},disabled:{opacity:.45}});
+const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#F7F7F5'},body:{padding:24,gap:12},kicker:{fontSize:12,fontWeight:'800',letterSpacing:1.3,color:'#777'},title:{fontSize:32,lineHeight:38,fontWeight:'800'},copy:{fontSize:15,lineHeight:22,color:'#5C626D',marginBottom:8},heading:{fontSize:16,fontWeight:'800'},muted:{fontSize:12,lineHeight:18,color:'#6D737C'},documentCard:{flexDirection:'row',gap:12,alignItems:'center',backgroundColor:'#FFF',borderWidth:1,borderColor:'#E0E3DF',borderRadius:17,padding:15},secondaryButton:{paddingVertical:10,paddingHorizontal:14,borderRadius:12,backgroundColor:'#111318'},secondaryText:{color:'#FFF',fontWeight:'800',fontSize:13},history:{backgroundColor:'#FFF',borderWidth:1,borderColor:'#E0E3DF',borderRadius:17,padding:15,gap:4},docRow:{flexDirection:'row',alignItems:'center',gap:10,paddingVertical:10,borderTopWidth:1,borderTopColor:'#EEEFEA'},docName:{fontSize:14,fontWeight:'800'},meta:{fontSize:11,color:'#747B86',marginTop:2},docActions:{alignItems:'flex-end',gap:5},status:{fontSize:11,fontWeight:'800',color:'#46644C'},deleteText:{fontSize:11,fontWeight:'800',color:'#A64242'},segment:{flexDirection:'row',backgroundColor:'#E9EAE7',padding:4,borderRadius:14,marginTop:4},segmentButton:{flex:1,padding:11,alignItems:'center',borderRadius:11},segmentActive:{backgroundColor:'#FFF'},segmentText:{fontWeight:'700',color:'#6D737C'},segmentTextActive:{color:'#111318'},label:{fontSize:13,fontWeight:'800',marginTop:6},chips:{flexDirection:'row',flexWrap:'wrap',gap:8},chip:{paddingVertical:9,paddingHorizontal:12,borderRadius:999,borderWidth:1,borderColor:'#D9DBD7',backgroundColor:'#FFF'},chipActive:{backgroundColor:'#111318',borderColor:'#111318'},chipText:{fontSize:13,fontWeight:'700',color:'#4F5660'},chipTextActive:{color:'#FFF'},input:{backgroundColor:'#FFF',borderWidth:1,borderColor:'#E0E3DF',borderRadius:15,padding:15,fontSize:16},row:{flexDirection:'row',gap:10},flex:{flex:1},time:{width:105},notes:{minHeight:92,textAlignVertical:'top'},private:{fontSize:12,lineHeight:18,color:'#6E5560'},button:{backgroundColor:'#111318',borderRadius:16,padding:17,alignItems:'center',marginTop:4},buttonText:{color:'#FFF',fontSize:16,fontWeight:'800'},disabled:{opacity:.45}});
