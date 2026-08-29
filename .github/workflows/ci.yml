@@ -6,8 +6,15 @@ on:
 permissions:
   contents: read
 jobs:
-  typecheck:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: test-public-key
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 000000000000-example.apps.googleusercontent.com
+      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: 000000000000-example.apps.googleusercontent.com
+      EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME: com.googleusercontent.apps.000000000000-example
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,6 +22,7 @@ jobs:
           node-version: 22
       - run: npm install --ignore-scripts
       - run: npm run typecheck
-        env:
-          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
-          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: test-public-key
+      - name: Validate Expo dependency compatibility
+        run: npx expo install --check
+      - name: Validate Expo public config
+        run: npx expo config --type public > /dev/null
