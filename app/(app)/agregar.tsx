@@ -30,7 +30,7 @@ export default function Add(){
   useEffect(()=>{loadContext();loadDocuments();},[]);
   const students=context.students??[]; const selected=useMemo(()=>students.find(s=>s.id===studentId),[students,studentId]);
 
-  async function loadContext(){const {data}=await supabase.rpc('after_my_context');const ctx=(data??{}) as Context;setContext(ctx);if(ctx.students?.[0])setStudentId(current=>current||ctx.students![0].id);}
+  async function loadContext(){const {data}=await supabase.rpc('after_my_context');const ctx=(data??{}) as Context;setContext(ctx);const first=ctx.students?.[0];if(first)setStudentId(current=>current||first.id);}
   async function loadDocuments(){const {data,error}=await supabase.rpc('after_source_documents');if(!error)setDocuments((data??[]) as SourceDocument[]);}
 
   async function uploadDocument(){
