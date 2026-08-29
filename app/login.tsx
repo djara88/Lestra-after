@@ -1,13 +1,62 @@
-import { useState } from 'react';
-import { Alert, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { z } from 'zod';
+import { GoogleSignin, isSuccessResponse, statusCodes } from '@react-native-google-signin/google-signin';
 import { supabase } from '@/lib/supabase';
 
-const schema = z.object({ email: z.string().trim().email().max(254), password: z.string().min(8).max(128) });
+const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+
 export default function Login() {
-  const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [busy,setBusy]=useState(false);
-  async function submit(){ const parsed=schema.safeParse({email,password}); if(!parsed.success){Alert.alert('Revisa tus datos','Ingresa un correo válido y una contraseña de al menos 8 caracteres.');return;} setBusy(true); const {error}=await supabase.auth.signInWithPassword(parsed.data); setBusy(false); if(error){Alert.alert('No pudimos iniciar sesión','Verifica tus credenciales.');return;} router.replace('/(app)'); }
-  return <SafeAreaView style={s.safe}><View style={s.card}><Text style={s.brand}>Lestra After</Text><Text style={s.title}>Tu familia, organizada.</Text><Text style={s.copy}>Estudio, actividades y compromisos del alumno en un solo lugar.</Text><TextInput style={s.input} autoCapitalize="none" keyboardType="email-address" autoComplete="email" placeholder="Correo" value={email} onChangeText={setEmail}/><TextInput style={s.input} secureTextEntry autoComplete="password" placeholder="Contraseña" value={password} onChangeText={setPassword}/><Pressable disabled={busy} style={s.button} onPress={submit}><Text style={s.buttonText}>{busy?'Ingresando…':'Ingresar'}</Text></Pressable></View></SafeAreaView>;
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (webClientId) GoogleSignin.configure({ webClientId, iosClientId });
+  }, []);
+
+  async function signInWithGoogle() {
+    if (!webClientId) {
+      Alert.alert('Configuración pendiente', 'El acceso con Google aún no tiene configurado su Client ID.');
+      return;
+    }
+    try {
+      setBusy(true);
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await GoogleSignin.signIn();
+      if (!isSuccessResponse(response) || !response.data.idToken) return;
+      const { error } = await supabase.auth.signInWithIdToken({ provider: 'google', token: response.data.idToken });
+      if (error) throw error;
+      const { data: context, error: contextError } = await supabase.rpc('after_my_context');
+      if (contextError) throw contextError;
+      const hasFamily = Boolean(context && typeof context === 'object' && 'family_id' in context);
+      router.replace(hasFamily ? '/(app)' : '/onboarding');
+    } catch (error: any) {
+      if (error?.code === statusCodes.SIGN_IN_CANCELLED) return;
+      if (error?.code === statusCodes.IN_PROGRESS) return;
+      Alert.alert('No pudimos iniciar sesión', 'Intenta nuevamente. Si el problema continúa, revisaremos la configuración de acceso.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <SafeAreaView style={s.safe}>
+      <View style={s.card}>
+        <Text style={s.brand}>Lestra After</Text>
+        <Text style={s.title}>Todo lo importante de tus hijos, en un solo lugar.</Text>
+        <Text style={s.copy}>Estudio, colegio, actividades, salud y compromisos familiares organizados alrededor de cada alumno.</Text>
+        <Pressable disabled={busy} style={[s.button, busy && s.disabled]} onPress={signInWithGoogle}>
+          <Text style={s.google}>G</Text><Text style={s.buttonText}>{busy ? 'Ingresando…' : 'Continuar con Google'}</Text>
+        </Pressable>
+        <Text style={s.legal}>Al continuar, la autenticación se realiza con Google. Los permisos familiares se administran exclusivamente dentro de Lestra After.</Text>
+      </View>
+    </SafeAreaView>
+  );
 }
-const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#F4F5F7',justifyContent:'center',padding:24},card:{gap:14},brand:{fontSize:16,fontWeight:'800'},title:{fontSize:36,fontWeight:'800',letterSpacing:-1.2},copy:{fontSize:16,lineHeight:24,color:'#5C626D',marginBottom:12},input:{backgroundColor:'#FFF',borderWidth:1,borderColor:'#E2E5E9',borderRadius:16,padding:16,fontSize:16},button:{backgroundColor:'#111318',borderRadius:16,padding:17,alignItems:'center'},buttonText:{color:'#FFF',fontWeight:'800',fontSize:16}});
+
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#F4F5F7', justifyContent: 'center', padding: 24 },
+  card: { gap: 18 }, brand: { fontSize: 16, fontWeight: '800' }, title: { fontSize: 34, lineHeight: 39, fontWeight: '800', letterSpacing: -1.1 },
+  copy: { fontSize: 16, lineHeight: 24, color: '#5C626D', marginBottom: 12 }, button: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D8DCE2', borderRadius: 16, padding: 17, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 12 },
+  disabled: { opacity: 0.55 }, google: { fontSize: 20, fontWeight: '900' }, buttonText: { color: '#111318', fontWeight: '800', fontSize: 16 }, legal: { fontSize: 12, lineHeight: 18, color: '#747B86' },
+});
