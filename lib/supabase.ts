@@ -1,6 +1,5 @@
 import 'react-native-url-polyfill/auto';
 import * as SecureStore from 'expo-secure-store';
-import { AppState } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -23,18 +22,3 @@ export const supabase = createClient(url, key, {
     detectSessionInUrl: false,
   },
 });
-
-// React Native does not expose browser visibility events. Keep token refresh active
-// only while After is in the foreground so sessions remain current without doing
-// unnecessary background work.
-AppState.addEventListener('change', (state) => {
-  if (state === 'active') {
-    void supabase.auth.startAutoRefresh();
-  } else {
-    void supabase.auth.stopAutoRefresh();
-  }
-});
-
-if (AppState.currentState === 'active') {
-  void supabase.auth.startAutoRefresh();
-}
