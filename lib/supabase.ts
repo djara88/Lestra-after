@@ -1,5 +1,6 @@
 import 'react-native-url-polyfill/auto';
 import * as SecureStore from 'expo-secure-store';
+import { AppState, Platform } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -34,7 +35,6 @@ const secureStorage = {
   async getItem(keyName: string) {
     const chunkCount = await readChunkCount(keyName);
     if (chunkCount === 0) {
-      // Compatibilidad con sesiones guardadas antes del almacenamiento fragmentado.
       return SecureStore.getItemAsync(keyName);
     }
 
@@ -84,3 +84,17 @@ export const supabase = createClient(url, key, {
     detectSessionInUrl: false,
   },
 });
+
+if (Platform.OS !== 'web') {
+  if (AppState.currentState === 'active') {
+    supabase.auth.startAutoRefresh();
+  }
+
+  AppState.addEventListener('change', (state) => {
+    if (state === 'active') {
+      supabase.auth.startAutoRefresh();
+    } else {
+      supabase.auth.stopAutoRefresh();
+    }
+  });
+}
