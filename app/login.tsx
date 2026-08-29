@@ -7,6 +7,14 @@ import { supabase } from '@/lib/supabase';
 const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
 
+function hasFamilyContext(context: unknown) {
+  if (Array.isArray(context)) {
+    return context.some((row) => Boolean(row && typeof row === 'object' && 'family_id' in row && row.family_id));
+  }
+
+  return Boolean(context && typeof context === 'object' && 'family_id' in context && context.family_id);
+}
+
 export default function Login() {
   const [busy, setBusy] = useState(false);
 
@@ -28,8 +36,7 @@ export default function Login() {
       if (error) throw error;
       const { data: context, error: contextError } = await supabase.rpc('after_my_context');
       if (contextError) throw contextError;
-      const hasFamily = Boolean(context && typeof context === 'object' && 'family_id' in context);
-      router.replace(hasFamily ? '/(app)' : '/onboarding');
+      router.replace(hasFamilyContext(context) ? '/(app)' : '/onboarding');
     } catch (error: any) {
       if (error?.code === statusCodes.SIGN_IN_CANCELLED) return;
       if (error?.code === statusCodes.IN_PROGRESS) return;
