@@ -1,0 +1,3 @@
+import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+export default async function Buzon(){const supabase=await createClient();const {data:{user}}=await supabase.auth.getUser();if(!user)redirect('/login');return <main className="shell"><section className="dashboardHead"><p className="eyebrow">BUZÓN INTELIGENTE</p><h1>Agrega lo que recibiste</h1><p>En esta primera versión registraremos el material de forma segura y lo revisaremos antes de convertirlo en tareas o eventos.</p></section><div className="card"><strong>Carga de archivos</strong><p className="muted">La interfaz de archivo privado es el siguiente bloque. No habilitaremos cargas hasta que el bucket y sus políticas estén cerrados por familia.</p></div></main>}
