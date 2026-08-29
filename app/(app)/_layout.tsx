@@ -1,0 +1,2 @@
+import { Tabs } from 'expo-router';
+export default function AppLayout(){return <Tabs screenOptions={{headerShown:false,tabBarLabelStyle:{fontSize:12}}}><Tabs.Screen name="index" options={{title:'Hoy'}}/><Tabs.Screen name="agenda" options={{title:'Agenda'}}/><Tabs.Screen name="agregar" options={{title:'Agregar'}}/><Tabs.Screen name="familia" options={{title:'Familia'}}/></Tabs>}

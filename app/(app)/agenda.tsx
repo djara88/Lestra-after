@@ -1,0 +1,1 @@
+import { SafeAreaView, Text, View } from 'react-native'; export default function Agenda(){return <SafeAreaView style={{flex:1,padding:24,backgroundColor:'#F7F7F5'}}><View><Text style={{fontSize:32,fontWeight:'800'}}>Agenda</Text><Text style={{marginTop:8,fontSize:16,color:'#5C626D'}}>Colegio, estudio, deporte, salud, familia y vida social.</Text></View></SafeAreaView>}

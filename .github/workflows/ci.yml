@@ -3,19 +3,18 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+permissions:
+  contents: read
 jobs:
-  build:
+  typecheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
-      - run: npm install
+          node-version: 22
+      - run: npm install --ignore-scripts
       - run: npm run typecheck
-      - run: npm run build
         env:
-          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-key
+          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: test-public-key

@@ -1,2 +1,0 @@
-import Link from 'next/link';
-export default function Home() { return <main className="landing"><div className="logo">A</div><p className="eyebrow">LESTRA AFTER</p><h1>Menos cosas en la cabeza.<br/>Más tiempo para tu familia.</h1><p className="lead">Organiza estudio, tareas, deporte, salud y compromisos familiares desde un solo lugar.</p><Link className="primary" href="/login">Entrar a After</Link></main>; }

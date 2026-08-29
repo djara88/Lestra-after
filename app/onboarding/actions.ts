@@ -1,4 +1,0 @@
-'use server';
-import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-export async function createFamily(formData:FormData){const name=String(formData.get('family_name')||'').trim();const display=String(formData.get('display_name')||'').trim();if(name.length<2||display.length<2)redirect('/onboarding?error=1');const supabase=await createClient();const {data:{user}}=await supabase.auth.getUser();if(!user)redirect('/login');const {data:family,error}=await supabase.schema('after').from('families').insert({name,created_by:user.id}).select('id').single();if(error||!family)redirect('/onboarding?error=1');const {error:memberError}=await supabase.schema('after').from('family_members').insert({family_id:family.id,user_id:user.id,role:'owner',display_name:display});if(memberError){await supabase.schema('after').from('families').delete().eq('id',family.id);redirect('/onboarding?error=1')}redirect('/dashboard');}
