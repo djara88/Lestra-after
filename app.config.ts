@@ -2,6 +2,9 @@ import type { ExpoConfig, ConfigContext } from 'expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   const iosUrlScheme = process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME;
+  const googlePlugin: string | [string, { iosUrlScheme: string }] = iosUrlScheme
+    ? ['@react-native-google-signin/google-signin', { iosUrlScheme }]
+    : '@react-native-google-signin/google-signin';
 
   return {
     ...config,
@@ -20,14 +23,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       package: 'app.lestra.after',
       adaptiveIcon: { backgroundColor: '#F4F5F7' },
     },
-    plugins: [
-      'expo-router',
-      'expo-secure-store',
-      [
-        '@react-native-google-signin/google-signin',
-        ...(iosUrlScheme ? [{ iosUrlScheme }] : []),
-      ],
-    ],
+    plugins: ['expo-router', 'expo-secure-store', googlePlugin],
     experiments: { typedRoutes: true },
   };
 };
