@@ -26,3 +26,7 @@ jobs:
         run: npx expo install --check
       - name: Validate Expo public config
         run: npx expo config --type public > /dev/null
+      - name: Bundle Android app
+        run: npx expo export --platform android --output-dir dist-ci-android
+      - name: Bundle iOS app
+        run: npx expo export --platform ios --output-dir dist-ci-ios
