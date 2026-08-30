@@ -7,6 +7,15 @@ import { supabase } from '@/lib/supabase';
 const familySchema = z.object({ familyName: z.string().trim().min(2).max(100), displayName: z.string().trim().min(2).max(100) });
 const studentSchema = z.object({ firstName: z.string().trim().min(1).max(80), preferredName: z.string().trim().max(80), schoolName: z.string().trim().max(160), gradeLevel: z.string().trim().max(80) });
 type Invitation={id:string;family_id:string;family_name:string;role:string;display_name:string|null;expires_at:string};
+type FamilyContext={family_id?:string|null;family_name?:string|null;display_name?:string|null;students?:Array<{id?:string|null}>|null};
+
+function getFamilyContext(context: unknown): FamilyContext | null {
+  if (Array.isArray(context)) {
+    const row = context.find((item) => Boolean(item && typeof item === 'object' && 'family_id' in item && item.family_id));
+    return row && typeof row === 'object' ? (row as FamilyContext) : null;
+  }
+  return context && typeof context === 'object' ? (context as FamilyContext) : null;
+}
 
 export default function Onboarding() {
   const [familyId, setFamilyId] = useState<string | null>(null);
@@ -18,15 +27,44 @@ export default function Onboarding() {
   const [gradeLevel, setGradeLevel] = useState('');
   const [invitations,setInvitations]=useState<Invitation[]>([]);
   const [busy, setBusy] = useState(false);
+  const [loadingContext, setLoadingContext] = useState(true);
 
-  useEffect(()=>{supabase.rpc('after_my_invitations').then(({data})=>setInvitations((data??[]) as Invitation[]));},[]);
+  useEffect(()=>{
+    let active = true;
+    async function loadOnboardingState(){
+      const [{data:context,error:contextError},{data:inviteData}] = await Promise.all([
+        supabase.rpc('after_my_context'),
+        supabase.rpc('after_my_invitations'),
+      ]);
+      if(!active)return;
+
+      if(!contextError){
+        const family=getFamilyContext(context);
+        const hasStudent=Boolean(family?.students?.some((student)=>Boolean(student?.id)));
+        if(family?.family_id && hasStudent){
+          router.replace('/(app)');
+          return;
+        }
+        if(family?.family_id){
+          setFamilyId(String(family.family_id));
+          setFamilyName(family.family_name??'');
+          setDisplayName(family.display_name??'');
+        }
+      }
+
+      setInvitations((inviteData??[]) as Invitation[]);
+      setLoadingContext(false);
+    }
+    void loadOnboardingState();
+    return()=>{active=false;};
+  },[]);
 
   async function acceptInvitation(invitation:Invitation){
     setBusy(true);
     const {error}=await supabase.rpc('after_accept_invitation',{p_invitation_id:invitation.id,p_display_name:invitation.display_name});
     setBusy(false);
     if(error)return Alert.alert('No pudimos aceptar la invitación','Puede haber expirado o corresponder a otra cuenta de Google.');
-    router.replace('/(app)');
+    router.replace('/');
   }
 
   async function createFamily() {
@@ -54,7 +92,11 @@ export default function Onboarding() {
     });
     setBusy(false);
     if (error) return Alert.alert('No pudimos crear el alumno', 'Revisa los datos e intenta nuevamente.');
-    router.replace('/(app)');
+    router.replace('/');
+  }
+
+  if(loadingContext){
+    return <SafeAreaView style={s.safe}><View style={s.loading}><Text style={s.copy}>Preparando tu espacio familiar…</Text></View></SafeAreaView>;
   }
 
   return <SafeAreaView style={s.safe}><ScrollView contentContainerStyle={s.wrap} keyboardShouldPersistTaps="handled">
@@ -66,7 +108,7 @@ export default function Onboarding() {
       <TextInput style={s.input} placeholder="Tu nombre" value={displayName} onChangeText={setDisplayName} maxLength={100}/>
       <Pressable style={[s.button,busy&&s.disabled]} disabled={busy} onPress={createFamily}><Text style={s.buttonText}>{busy?'Creando…':'Continuar'}</Text></Pressable>
     </View> : <View style={s.card}>
-      <Text style={s.step}>PASO 2 DE 2</Text><Text style={s.title}>Agrega al primer alumno</Text><Text style={s.copy}>Partimos con lo mínimo. Salud, documentos y otros datos sensibles se solicitan solo cuando una función realmente los necesita.</Text>
+      <Text style={s.step}>PASO 2 DE 2</Text><Text style={s.title}>Agrega al primer alumno</Text><Text style={s.copy}>Tu familia ya está creada. Completa este paso para habilitar Agenda, Estudio y responsabilidades familiares.</Text>
       <TextInput style={s.input} placeholder="Nombre" value={firstName} onChangeText={setFirstName} maxLength={80}/>
       <TextInput style={s.input} placeholder="Nombre preferido (opcional)" value={preferredName} onChangeText={setPreferredName} maxLength={80}/>
       <TextInput style={s.input} placeholder="Colegio (opcional)" value={schoolName} onChangeText={setSchoolName} maxLength={160}/>
@@ -76,4 +118,4 @@ export default function Onboarding() {
   </ScrollView></SafeAreaView>;
 }
 
-const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#F4F5F7'},wrap:{padding:24,paddingTop:48,gap:24},brand:{fontSize:16,fontWeight:'800'},card:{gap:15},inviteBox:{backgroundColor:'#FFF',borderWidth:1,borderColor:'#DDE1E5',borderRadius:18,padding:16,gap:12},inviteTitle:{fontSize:22,fontWeight:'800'},inviteRow:{flexDirection:'row',alignItems:'center',gap:12,borderTopWidth:1,borderTopColor:'#ECEEF0',paddingTop:12},inviteFamily:{fontSize:16,fontWeight:'800'},smallButton:{backgroundColor:'#111318',borderRadius:12,paddingVertical:11,paddingHorizontal:16},step:{fontSize:12,fontWeight:'800',letterSpacing:1.4,color:'#737A84'},title:{fontSize:34,lineHeight:39,fontWeight:'800',letterSpacing:-1.1},copy:{fontSize:15,lineHeight:23,color:'#626A75',marginBottom:8},input:{backgroundColor:'#FFF',borderWidth:1,borderColor:'#E0E3E7',borderRadius:16,padding:16,fontSize:16},button:{backgroundColor:'#111318',borderRadius:16,padding:17,alignItems:'center',marginTop:4},buttonText:{color:'#FFF',fontSize:16,fontWeight:'800'},disabled:{opacity:.55}});
+const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#F4F5F7'},loading:{flex:1,alignItems:'center',justifyContent:'center',padding:24},wrap:{padding:24,paddingTop:48,gap:24},brand:{fontSize:16,fontWeight:'800'},card:{gap:15},inviteBox:{backgroundColor:'#FFF',borderWidth:1,borderColor:'#DDE1E5',borderRadius:18,padding:16,gap:12},inviteTitle:{fontSize:22,fontWeight:'800'},inviteRow:{flexDirection:'row',alignItems:'center',gap:12,borderTopWidth:1,borderTopColor:'#ECEEF0',paddingTop:12},inviteFamily:{fontSize:16,fontWeight:'800'},smallButton:{backgroundColor:'#111318',borderRadius:12,paddingVertical:11,paddingHorizontal:16},step:{fontSize:12,fontWeight:'800',letterSpacing:1.4,color:'#737A84'},title:{fontSize:34,lineHeight:39,fontWeight:'800',letterSpacing:-1.1},copy:{fontSize:15,lineHeight:23,color:'#626A75',marginBottom:8},input:{backgroundColor:'#FFF',borderWidth:1,borderColor:'#E0E3E7',borderRadius:16,padding:16,fontSize:16},button:{backgroundColor:'#111318',borderRadius:16,padding:17,alignItems:'center',marginTop:4},buttonText:{color:'#FFF',fontSize:16,fontWeight:'800'},disabled:{opacity:.55}});
