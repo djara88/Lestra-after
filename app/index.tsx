@@ -3,12 +3,18 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
-function hasFamilyContext(context: unknown) {
+type FamilyContext = {
+  family_id?: string | null;
+  students?: Array<{ id?: string | null }> | null;
+};
+
+function getFamilyContext(context: unknown): FamilyContext | null {
   if (Array.isArray(context)) {
-    return context.some((row) => Boolean(row && typeof row === 'object' && 'family_id' in row && row.family_id));
+    const row = context.find((item) => Boolean(item && typeof item === 'object' && 'family_id' in item && item.family_id));
+    return row && typeof row === 'object' ? (row as FamilyContext) : null;
   }
 
-  return Boolean(context && typeof context === 'object' && 'family_id' in context && context.family_id);
+  return context && typeof context === 'object' ? (context as FamilyContext) : null;
 }
 
 export default function Index() {
@@ -42,7 +48,11 @@ export default function Index() {
         return;
       }
 
-      router.replace(hasFamilyContext(context) ? '/(app)' : '/onboarding');
+      const family = getFamilyContext(context);
+      const hasFamily = Boolean(family?.family_id);
+      const hasStudent = Boolean(family?.students?.some((student) => Boolean(student?.id)));
+
+      router.replace(hasFamily && hasStudent ? '/(app)' : '/onboarding');
     }
 
     void routeSession();
