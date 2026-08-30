@@ -20,7 +20,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install --ignore-scripts
+          cache: npm
+      - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - name: Validate Expo dependency compatibility
         run: npx expo install --check
