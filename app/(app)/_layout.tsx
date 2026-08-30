@@ -3,6 +3,20 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Tabs, router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
+type FamilyContext = {
+  family_id?: string | null;
+  students?: Array<{ id?: string | null }> | null;
+};
+
+function getFamilyContext(context: unknown): FamilyContext | null {
+  if (Array.isArray(context)) {
+    const row = context.find((item) => Boolean(item && typeof item === 'object' && 'family_id' in item && item.family_id));
+    return row && typeof row === 'object' ? (row as FamilyContext) : null;
+  }
+
+  return context && typeof context === 'object' ? (context as FamilyContext) : null;
+}
+
 export default function AppLayout() {
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -12,6 +26,7 @@ export default function AppLayout() {
     let mounted = true;
 
     async function validateAccess() {
+      setReady(false);
       setLoadError(false);
 
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -35,8 +50,11 @@ export default function AppLayout() {
         return;
       }
 
-      const hasFamily = Boolean(context && typeof context === 'object' && 'family_id' in context && context.family_id);
-      if (!hasFamily) {
+      const family = getFamilyContext(context);
+      const hasFamily = Boolean(family?.family_id);
+      const hasStudent = Boolean(family?.students?.some((student) => Boolean(student?.id)));
+
+      if (!hasFamily || !hasStudent) {
         router.replace('/onboarding');
         return;
       }
