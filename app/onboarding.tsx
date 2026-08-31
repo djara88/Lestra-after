@@ -8,6 +8,7 @@ const familySchema = z.object({ familyName: z.string().trim().min(2).max(100), d
 const studentSchema = z.object({ firstName: z.string().trim().min(1).max(80), preferredName: z.string().trim().max(80), schoolName: z.string().trim().max(160), gradeLevel: z.string().trim().max(80) });
 type Invitation={id:string;family_id:string;family_name:string;role:string;display_name:string|null;expires_at:string};
 type FamilyContext={family_id?:string|null;family_name?:string|null;display_name?:string|null;students?:Array<{id?:string|null}>|null};
+type AccessState={state?:'active'|'paused'|'closed'|'none'};
 
 function getFamilyContext(context: unknown): FamilyContext | null {
   if (Array.isArray(context)) {
@@ -28,28 +29,40 @@ export default function Onboarding() {
   const [invitations,setInvitations]=useState<Invitation[]>([]);
   const [busy, setBusy] = useState(false);
   const [loadingContext, setLoadingContext] = useState(true);
+  const [accessCheckFailed, setAccessCheckFailed] = useState(false);
 
   useEffect(()=>{
     let active = true;
     async function loadOnboardingState(){
-      const [{data:context,error:contextError},{data:inviteData}] = await Promise.all([
+      const [{data:accessData,error:accessError},{data:context,error:contextError},{data:inviteData}] = await Promise.all([
+        supabase.rpc('after_my_access_state'),
         supabase.rpc('after_my_context'),
         supabase.rpc('after_my_invitations'),
       ]);
       if(!active)return;
 
-      if(!contextError){
-        const family=getFamilyContext(context);
-        const hasStudent=Boolean(family?.students?.some((student)=>Boolean(student?.id)));
-        if(family?.family_id && hasStudent){
-          router.replace('/(app)');
-          return;
-        }
-        if(family?.family_id){
-          setFamilyId(String(family.family_id));
-          setFamilyName(family.family_name??'');
-          setDisplayName(family.display_name??'');
-        }
+      if(accessError||contextError){
+        setAccessCheckFailed(true);
+        setLoadingContext(false);
+        return;
+      }
+
+      const access=(accessData??{}) as AccessState;
+      if(access.state==='paused'||access.state==='closed'){
+        router.replace('/access-paused');
+        return;
+      }
+
+      const family=getFamilyContext(context);
+      const hasStudent=Boolean(family?.students?.some((student)=>Boolean(student?.id)));
+      if(family?.family_id && hasStudent){
+        router.replace('/(app)');
+        return;
+      }
+      if(family?.family_id){
+        setFamilyId(String(family.family_id));
+        setFamilyName(family.family_name??'');
+        setDisplayName(family.display_name??'');
       }
 
       setInvitations((inviteData??[]) as Invitation[]);
@@ -97,6 +110,10 @@ export default function Onboarding() {
 
   if(loadingContext){
     return <SafeAreaView style={s.safe}><View style={s.loading}><Text style={s.copy}>Preparando tu espacio familiar…</Text></View></SafeAreaView>;
+  }
+
+  if(accessCheckFailed){
+    return <SafeAreaView style={s.safe}><View style={s.loading}><Text style={s.title}>No pudimos verificar tu acceso.</Text><Text style={s.copy}>Tu sesión sigue protegida. Revisa tu conexión e intenta nuevamente.</Text><Pressable onPress={()=>router.replace('/')} style={s.button}><Text style={s.buttonText}>Reintentar</Text></Pressable></View></SafeAreaView>;
   }
 
   return <SafeAreaView style={s.safe}><ScrollView contentContainerStyle={s.wrap} keyboardShouldPersistTaps="handled">

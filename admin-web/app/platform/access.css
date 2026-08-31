@@ -1,0 +1,9 @@
+.accessNotice{margin:0 0 18px;padding:12px 14px;border-radius:12px;font-size:13px;font-weight:750}
+.accessNotice.success{background:#edf9f1;border:1px solid #cdebd7;color:#287148}
+.accessNotice.error{background:#fff2f0;border:1px solid #f1d0ca;color:#914437}
+.statusBadge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:750}
+.statusBadge:before{content:"";width:7px;height:7px;border-radius:50%;background:#a9afb7}
+.statusBadge.active:before{background:#35af70}
+.accessAction{border:1px solid #dfe1dd;background:#fff;border-radius:9px;padding:7px 10px;font:inherit;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap}
+.accessAction.pause{color:#9b493d;border-color:#efd5d0;background:#fff8f7}
+.accessAction.restore{color:#287148;border-color:#cde8d6;background:#f4fbf6}

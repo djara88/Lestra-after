@@ -7,6 +7,7 @@ type FamilyContext = {
   family_id?: string | null;
   students?: Array<{ id?: string | null }> | null;
 };
+type AccessState = { state?: 'active' | 'paused' | 'closed' | 'none' };
 
 function getFamilyContext(context: unknown): FamilyContext | null {
   if (Array.isArray(context)) {
@@ -42,11 +43,20 @@ export default function AppLayout() {
         return;
       }
 
-      const { data: context, error: contextError } = await supabase.rpc('after_my_context');
+      const [{ data: accessData, error: accessError }, { data: context, error: contextError }] = await Promise.all([
+        supabase.rpc('after_my_access_state'),
+        supabase.rpc('after_my_context'),
+      ]);
       if (!mounted) return;
 
-      if (contextError) {
+      if (accessError || contextError) {
         setLoadError(true);
+        return;
+      }
+
+      const access = (accessData ?? {}) as AccessState;
+      if (access.state === 'paused' || access.state === 'closed') {
+        router.replace('/access-paused');
         return;
       }
 
