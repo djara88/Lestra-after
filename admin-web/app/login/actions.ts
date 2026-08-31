@@ -6,10 +6,12 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function loginWithGoogle() {
   const h = await headers();
-  const configured = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '');
   const host = h.get('x-forwarded-host') ?? h.get('host');
   const proto = h.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'production' ? 'https' : 'http');
-  const origin = configured ?? (host ? `${proto}://${host}` : null);
+  const runtimeOrigin = host ? `${proto}://${host}` : null;
+  const origin = process.env.NODE_ENV === 'development'
+    ? (process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? runtimeOrigin)
+    : runtimeOrigin;
   if (!origin) redirect('/login?error=config');
 
   const supabase = await createClient();
