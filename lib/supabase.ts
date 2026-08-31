@@ -3,9 +3,15 @@ import * as SecureStore from 'expo-secure-store';
 import { AppState, Platform } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
 
-const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const key = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-if (!url || !key) throw new Error('Falta configuración pública de Supabase.');
+const PRODUCTION_SUPABASE_URL = 'https://tdbfypwxgtadeeoihneq.supabase.co';
+const PRODUCTION_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_0pz3poS7oYx9z-4RJqSq3w_9xaqATdl';
+const isDevelopment = process.env.NODE_ENV === 'development';
+const url = isDevelopment
+  ? (process.env.EXPO_PUBLIC_SUPABASE_URL ?? PRODUCTION_SUPABASE_URL)
+  : PRODUCTION_SUPABASE_URL;
+const key = isDevelopment
+  ? (process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? PRODUCTION_SUPABASE_PUBLISHABLE_KEY)
+  : PRODUCTION_SUPABASE_PUBLISHABLE_KEY;
 
 const CHUNK_SIZE = 1800;
 const secureOptions: SecureStore.SecureStoreOptions = {
