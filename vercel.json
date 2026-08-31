@@ -1,6 +1,0 @@
-{
-  "buildCommand": "echo Building static After landing",
-  "outputDirectory": "web-public",
-  "cleanUrls": true,
-  "trailingSlash": false
-}
