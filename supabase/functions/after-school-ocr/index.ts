@@ -123,10 +123,10 @@ Deno.serve(async (req: Request) => {
     const bytes = new Uint8Array(await blob.arrayBuffer());
     if (bytes.length === 0 || bytes.length > 8 * 1024 * 1024) throw new Error("Tamaño de archivo inválido.");
 
-    const fileData = `data:${document.mime_type};base64,${toBase64(bytes)}`;
+    const base64 = toBase64(bytes);
     const fileInput = document.mime_type.startsWith("image/")
-      ? { type: "input_image", image_url: fileData, detail: "high" }
-      : { type: "input_file", filename: document.original_name, file_data: fileData };
+      ? { type: "input_image", image_url: `data:${document.mime_type};base64,${base64}`, detail: "high" }
+      : { type: "input_file", filename: document.original_name, file_data: base64 };
 
     const today = new Date().toISOString();
     const prompt = [
