@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
@@ -12,6 +12,7 @@ type Context = {
   students?: Array<{ id: string; first_name: string; preferred_name?: string | null }>;
 };
 type Mode = 'academic' | 'event';
+type PickerMode = 'date' | 'time' | null;
 type SourceDocument = {
   id: string;
   student_id: string | null;
@@ -59,10 +60,55 @@ const eventCategories = [['sport', 'Deporte'], ['health', 'Salud'], ['social', '
 const priorities = [['low', 'Baja'], ['normal', 'Normal'], ['high', 'Alta'], ['urgent', 'Urgente']] as const;
 const allowedMime = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
+const weekdays = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const timeOptions = Array.from({ length: 34 }, (_, index) => {
+  const total = 6 * 60 + index * 30;
+  const hour = Math.floor(total / 60);
+  const minute = total % 60;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+});
 
 function localIso(date: string, time: string) {
   const value = new Date(`${date}T${time}:00`);
   return Number.isNaN(value.getTime()) ? null : value.toISOString();
+}
+
+function dateValue(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateValue(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return new Date();
+  return new Date(year, month - 1, day);
+}
+
+function displayDate(value: string) {
+  const parsed = parseDateValue(value);
+  return parsed.toLocaleDateString('es-CL', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function addDays(base: Date, days: number) {
+  const copy = new Date(base);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+function monthCells(cursor: Date) {
+  const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+  const mondayOffset = (first.getDay() + 6) % 7;
+  const start = addDays(first, -mondayOffset);
+  return Array.from({ length: 42 }, (_, index) => {
+    const value = addDays(start, index);
+    return {
+      day: value.getDate(),
+      value: dateValue(value),
+      inMonth: value.getMonth() === cursor.getMonth(),
+    };
+  });
 }
 
 function prettyBytes(value: number) {
@@ -107,7 +153,7 @@ export default function Add() {
   const [busy, setBusy] = useState(false);
 
   const [title, setTitle] = useState('');
-  const [date, setDate] = useState('');
+  const [date, setDate] = useState(() => dateValue(new Date()));
   const [time, setTime] = useState('18:00');
   const [detail, setDetail] = useState('');
   const [subject, setSubject] = useState('');
@@ -115,9 +161,12 @@ export default function Add() {
   const [priority, setPriority] = useState('normal');
   const [academicType, setAcademicType] = useState('task');
   const [category, setCategory] = useState('sport');
+  const [pickerMode, setPickerMode] = useState<PickerMode>(null);
+  const [calendarCursor, setCalendarCursor] = useState(() => new Date());
 
   const students = context.students ?? [];
   const selected = useMemo(() => students.find((student) => student.id === studentId), [students, studentId]);
+  const calendar = useMemo(() => monthCells(calendarCursor), [calendarCursor]);
 
   useEffect(() => {
     void loadContext();
@@ -278,6 +327,15 @@ export default function Add() {
     ]);
   }
 
+  function openDatePicker() {
+    setCalendarCursor(parseDateValue(date));
+    setPickerMode('date');
+  }
+
+  function quickDate(days: number) {
+    setDate(dateValue(addDays(new Date(), days)));
+  }
+
   async function saveManual() {
     const parsedTitle = titleSchema.safeParse(title);
     const parsedDate = dateSchema.safeParse(date);
@@ -325,7 +383,6 @@ export default function Add() {
     }
 
     setTitle('');
-    setDate('');
     setDetail('');
     setSubject('');
     setMaterials('');
@@ -469,25 +526,86 @@ export default function Add() {
           </>
         ) : null}
 
-        <View style={s.row}>
-          <TextInput style={[s.input, s.flex]} value={date} onChangeText={setDate} placeholder="AAAA-MM-DD" keyboardType="numbers-and-punctuation" />
-          <TextInput style={[s.input, s.time]} value={time} onChangeText={setTime} placeholder="HH:MM" keyboardType="numbers-and-punctuation" />
+        <Text style={s.label}>¿Cuándo?</Text>
+        <View style={s.selectorRow}>
+          <Pressable onPress={openDatePicker} style={[s.selector, s.dateSelector]}>
+            <Text style={s.selectorLabel}>Fecha</Text>
+            <Text numberOfLines={1} style={s.selectorValue}>{displayDate(date)}</Text>
+          </Pressable>
+          <Pressable onPress={() => setPickerMode('time')} style={[s.selector, s.timeSelector]}>
+            <Text style={s.selectorLabel}>Hora</Text>
+            <Text style={s.selectorValue}>{time}</Text>
+          </Pressable>
         </View>
+        <View style={s.quickRow}>
+          <Pressable onPress={() => quickDate(0)} style={s.quickButton}><Text style={s.quickText}>Hoy</Text></Pressable>
+          <Pressable onPress={() => quickDate(1)} style={s.quickButton}><Text style={s.quickText}>Mañana</Text></Pressable>
+          <Pressable onPress={() => setTime('18:00')} style={s.quickButton}><Text style={s.quickText}>18:00</Text></Pressable>
+        </View>
+
         <TextInput style={[s.input, s.notes]} value={detail} onChangeText={setDetail} maxLength={2000} multiline placeholder="Detalle opcional" />
         {category === 'health' && mode === 'event' ? <Text style={s.private}>Los eventos de salud se guardan como privados por defecto. After solo recuerda; no entrega indicaciones médicas.</Text> : null}
         <Pressable disabled={busy || !selected} onPress={() => void saveManual()} style={[s.primaryButton, (busy || !selected) && s.disabled]}>
           <Text style={s.primaryText}>{busy ? 'Guardando…' : 'Guardar'}</Text>
         </Pressable>
       </ScrollView>
+
+      <Modal visible={pickerMode !== null} transparent animationType="fade" onRequestClose={() => setPickerMode(null)}>
+        <View style={s.modalBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setPickerMode(null)} />
+          <View style={s.modalCard}>
+            <View style={s.modalHead}>
+              <View>
+                <Text style={s.modalKicker}>{pickerMode === 'date' ? 'FECHA' : 'HORA'}</Text>
+                <Text style={s.modalTitle}>{pickerMode === 'date' ? displayDate(date) : time}</Text>
+              </View>
+              <Pressable onPress={() => setPickerMode(null)} style={s.closeButton}><Text style={s.closeText}>Cerrar</Text></Pressable>
+            </View>
+
+            {pickerMode === 'date' ? (
+              <>
+                <View style={s.monthHead}>
+                  <Pressable onPress={() => setCalendarCursor((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))} style={s.monthButton}><Text style={s.monthButtonText}>‹</Text></Pressable>
+                  <Text style={s.monthTitle}>{calendarCursor.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })}</Text>
+                  <Pressable onPress={() => setCalendarCursor((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))} style={s.monthButton}><Text style={s.monthButtonText}>›</Text></Pressable>
+                </View>
+                <View style={s.weekdays}>{weekdays.map((weekday, index) => <Text key={`${weekday}-${index}`} style={s.weekday}>{weekday}</Text>)}</View>
+                <View style={s.calendarGrid}>
+                  {calendar.map((cell) => {
+                    const active = cell.value === date;
+                    return (
+                      <Pressable key={cell.value} onPress={() => { setDate(cell.value); setPickerMode(null); }} style={[s.dayCell, active && s.dayCellActive]}>
+                        <Text style={[s.dayText, !cell.inMonth && s.dayTextMuted, active && s.dayTextActive]}>{cell.day}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={s.modalQuickRow}>
+                  <Pressable onPress={() => { quickDate(0); setPickerMode(null); }} style={s.modalQuick}><Text style={s.modalQuickText}>Hoy</Text></Pressable>
+                  <Pressable onPress={() => { quickDate(1); setPickerMode(null); }} style={s.modalQuick}><Text style={s.modalQuickText}>Mañana</Text></Pressable>
+                </View>
+              </>
+            ) : (
+              <ScrollView style={s.timeScroll} contentContainerStyle={s.timeGrid}>
+                {timeOptions.map((value) => (
+                  <Pressable key={value} onPress={() => { setTime(value); setPickerMode(null); }} style={[s.timeOption, time === value && s.timeOptionActive]}>
+                    <Text style={[s.timeOptionText, time === value && s.timeOptionTextActive]}>{value}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F7F7F5' },
-  body: { padding: 22, paddingBottom: 48, gap: 12 },
+  body: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 56, gap: 12 },
   kicker: { fontSize: 11, fontWeight: '900', letterSpacing: 1.35, color: '#6F756F' },
-  title: { fontSize: 31, lineHeight: 36, fontWeight: '900', letterSpacing: -0.8, color: '#171A18' },
+  title: { fontSize: 29, lineHeight: 34, fontWeight: '900', letterSpacing: -0.8, color: '#171A18' },
   copy: { fontSize: 15, lineHeight: 22, color: '#5C626D', marginBottom: 5 },
   heading: { fontSize: 17, fontWeight: '900', color: '#171A18' },
   muted: { fontSize: 12, lineHeight: 18, color: '#6D737C' },
@@ -498,8 +616,8 @@ const s = StyleSheet.create({
   chipActive: { backgroundColor: '#171A18', borderColor: '#171A18' },
   chipText: { fontSize: 13, fontWeight: '700', color: '#4F5660' },
   chipTextActive: { color: '#FFF' },
-  ocrBox: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: '#FFF', borderWidth: 1, borderColor: '#DEE2DC', borderRadius: 18, padding: 16 },
-  secondaryButton: { paddingVertical: 11, paddingHorizontal: 14, borderRadius: 13, backgroundColor: '#171A18' },
+  ocrBox: { gap: 12, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#DEE2DC', borderRadius: 18, padding: 16 },
+  secondaryButton: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 13, backgroundColor: '#171A18', alignItems: 'center' },
   secondaryText: { color: '#FFF', fontWeight: '900', fontSize: 13 },
   panel: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E0E3DF', borderRadius: 18, padding: 15, gap: 3 },
   documentRow: { borderTopWidth: 1, borderTopColor: '#EEEFEA', paddingVertical: 12, gap: 6 },
@@ -530,11 +648,46 @@ const s = StyleSheet.create({
   segmentText: { fontWeight: '700', color: '#6D737C' },
   segmentTextActive: { color: '#111318' },
   input: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#DDE1DC', borderRadius: 15, padding: 14, fontSize: 16, color: '#171A18' },
-  row: { flexDirection: 'row', gap: 10 },
-  time: { width: 105 },
   notes: { minHeight: 88, textAlignVertical: 'top' },
   private: { fontSize: 12, lineHeight: 18, color: '#6E5560' },
   primaryButton: { backgroundColor: '#171A18', borderRadius: 16, padding: 16, alignItems: 'center', marginTop: 4 },
   primaryText: { color: '#FFF', fontSize: 16, fontWeight: '900' },
   disabled: { opacity: 0.45 },
+  selectorRow: { flexDirection: 'row', gap: 10 },
+  selector: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#DDE1DC', borderRadius: 15, paddingHorizontal: 14, paddingVertical: 12 },
+  dateSelector: { flex: 1, minWidth: 0 },
+  timeSelector: { width: 104 },
+  selectorLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 0.8, textTransform: 'uppercase', color: '#838983' },
+  selectorValue: { fontSize: 14, lineHeight: 20, fontWeight: '800', color: '#1B1F1B', marginTop: 3 },
+  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  quickButton: { borderWidth: 1, borderColor: '#D9DDD7', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, backgroundColor: '#FFF' },
+  quickText: { fontSize: 12, fontWeight: '800', color: '#4B534C' },
+  modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,18,16,0.42)' },
+  modalCard: { backgroundColor: '#FAFAF8', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, paddingBottom: 30, maxHeight: '82%' },
+  modalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 },
+  modalKicker: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1, color: '#808680' },
+  modalTitle: { fontSize: 19, lineHeight: 25, fontWeight: '900', color: '#181C19', textTransform: 'capitalize' },
+  closeButton: { borderWidth: 1, borderColor: '#D8DDD7', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FFF' },
+  closeText: { fontSize: 12, fontWeight: '900', color: '#313832' },
+  monthHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  monthButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#EEF0EB' },
+  monthButtonText: { fontSize: 28, lineHeight: 30, fontWeight: '500', color: '#303630' },
+  monthTitle: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '900', color: '#303630', textTransform: 'capitalize' },
+  weekdays: { flexDirection: 'row', marginBottom: 4 },
+  weekday: { width: '14.2857%', textAlign: 'center', fontSize: 11, fontWeight: '900', color: '#838983' },
+  calendarGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  dayCell: { width: '14.2857%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 999 },
+  dayCellActive: { backgroundColor: '#1A1E1A' },
+  dayText: { fontSize: 13, fontWeight: '800', color: '#303630' },
+  dayTextMuted: { color: '#B0B4AF' },
+  dayTextActive: { color: '#FFF' },
+  modalQuickRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  modalQuick: { flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 13, backgroundColor: '#EEF0EB' },
+  modalQuickText: { fontSize: 13, fontWeight: '900', color: '#333A34' },
+  timeScroll: { maxHeight: 420 },
+  timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 4 },
+  timeOption: { width: '23%', minWidth: 68, alignItems: 'center', paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#DDE1DC', backgroundColor: '#FFF' },
+  timeOptionActive: { backgroundColor: '#1A1E1A', borderColor: '#1A1E1A' },
+  timeOptionText: { fontSize: 13, fontWeight: '800', color: '#3A403A' },
+  timeOptionTextActive: { color: '#FFF' },
 });
