@@ -1,18 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';
+import { completeOAuthUrl, dismissOAuthBrowser, GOOGLE_REDIRECT } from '@/lib/mobile-oauth';
 
 WebBrowser.maybeCompleteAuthSession();
-
-const redirectTo = 'lestraafter://google-auth';
-
-function readParam(url: string, name: string) {
-  const query = url.includes('?') ? url.split('?')[1]?.split('#')[0] ?? '' : '';
-  const fragment = url.includes('#') ? url.split('#')[1] ?? '' : '';
-  return new URLSearchParams(query).get(name) ?? new URLSearchParams(fragment).get(name);
-}
 
 export default function Login() {
   const [busy, setBusy] = useState(false);
@@ -24,39 +17,33 @@ export default function Login() {
     };
   }, []);
 
-  async function completeOAuth(url: string) {
-    const oauthError = readParam(url, 'error_description') ?? readParam(url, 'error');
-    if (oauthError) throw new Error(oauthError);
-
-    const accessToken = readParam(url, 'access_token');
-    const refreshToken = readParam(url, 'refresh_token');
-    if (accessToken && refreshToken) {
-      const { error } = await supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
-      if (error) throw error;
-      return;
-    }
-
-    const code = readParam(url, 'code');
-    if (code) {
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) throw error;
-      return;
-    }
-
-    throw new Error('La respuesta de Google no incluyó una sesión válida.');
-  }
-
   async function signInWithGoogle() {
+    let handled = false;
+    let callbackSubscription: ReturnType<typeof Linking.addEventListener> | null = null;
+
+    const finish = async (url: string) => {
+      if (handled || !url.startsWith(GOOGLE_REDIRECT)) return;
+      handled = true;
+      dismissOAuthBrowser();
+      await completeOAuthUrl(url);
+      router.replace('/');
+    };
+
     try {
       setBusy(true);
+
+      callbackSubscription = Linking.addEventListener('url', ({ url }) => {
+        void finish(url).catch((error) => {
+          console.error('Google OAuth deep-link callback failed', error);
+          Alert.alert('No pudimos iniciar sesión', 'Google respondió, pero no pudimos cerrar correctamente el acceso. Intenta nuevamente.');
+          setBusy(false);
+        });
+      });
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo,
+          redirectTo: GOOGLE_REDIRECT,
           skipBrowserRedirect: true,
           queryParams: { prompt: 'select_account' },
         },
@@ -64,22 +51,23 @@ export default function Login() {
       if (error) throw error;
       if (!data.url) throw new Error('No se recibió URL de autenticación.');
 
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo, {
-        showInRecents: true,
+      const result = await WebBrowser.openAuthSessionAsync(data.url, GOOGLE_REDIRECT, {
+        showInRecents: false,
       });
 
-      if (result.type !== 'success') return;
-
-      await completeOAuth(result.url);
-      router.replace('/');
+      if (result.type === 'success') {
+        await finish(result.url);
+      }
     } catch (error) {
       console.error('Google OAuth failed', error);
+      dismissOAuthBrowser();
       Alert.alert(
         'No pudimos iniciar sesión',
         'No fue posible completar el acceso con Google. Intenta nuevamente.',
       );
     } finally {
-      setBusy(false);
+      callbackSubscription?.remove();
+      if (!handled) setBusy(false);
     }
   }
 
