@@ -29,8 +29,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - run: npm ci --ignore-scripts
+      - run: npm install --ignore-scripts --no-fund
       - run: npm run typecheck
+      - name: Validate Expo dependency compatibility
+        run: npx expo install --check
       - name: Generate native Android project
         run: npx expo prebuild --platform android --clean --no-install
       - name: Build standalone release APK with bundled JavaScript
