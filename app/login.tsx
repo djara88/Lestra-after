@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';
 
-const redirectTo = 'lestraafter://login';
+WebBrowser.maybeCompleteAuthSession();
+
+const redirectTo = 'lestraafter://google-auth';
 
 function readParam(url: string, name: string) {
   const query = url.includes('?') ? url.split('?')[1]?.split('#')[0] ?? '' : '';
@@ -14,59 +16,43 @@ function readParam(url: string, name: string) {
 
 export default function Login() {
   const [busy, setBusy] = useState(false);
-  const completingRef = useRef(false);
 
   useEffect(() => {
-    async function completeOAuth(url: string | null) {
-      if (!url || !url.startsWith(redirectTo) || completingRef.current) return;
-      completingRef.current = true;
-      setBusy(true);
+    void WebBrowser.warmUpAsync();
+    return () => {
+      void WebBrowser.coolDownAsync();
+    };
+  }, []);
 
-      try {
-        const oauthError = readParam(url, 'error_description') ?? readParam(url, 'error');
-        if (oauthError) throw new Error(oauthError);
+  async function completeOAuth(url: string) {
+    const oauthError = readParam(url, 'error_description') ?? readParam(url, 'error');
+    if (oauthError) throw new Error(oauthError);
 
-        const code = readParam(url, 'code');
-        if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-          router.replace('/');
-          return;
-        }
-
-        const accessToken = readParam(url, 'access_token');
-        const refreshToken = readParam(url, 'refresh_token');
-        if (accessToken && refreshToken) {
-          const { error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-          if (error) throw error;
-          router.replace('/');
-          return;
-        }
-
-        throw new Error('La respuesta de Google no incluyó una sesión válida.');
-      } catch {
-        Alert.alert('No pudimos completar el acceso', 'Vuelve a intentarlo con Google. Si el problema continúa, revisaremos la configuración de retorno de la aplicación.');
-      } finally {
-        completingRef.current = false;
-        setBusy(false);
-      }
+    const accessToken = readParam(url, 'access_token');
+    const refreshToken = readParam(url, 'refresh_token');
+    if (accessToken && refreshToken) {
+      const { error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      if (error) throw error;
+      return;
     }
 
-    const subscription = Linking.addEventListener('url', ({ url }) => {
-      void completeOAuth(url);
-    });
+    const code = readParam(url, 'code');
+    if (code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+      return;
+    }
 
-    void Linking.getInitialURL().then((url) => completeOAuth(url));
-
-    return () => subscription.remove();
-  }, []);
+    throw new Error('La respuesta de Google no incluyó una sesión válida.');
+  }
 
   async function signInWithGoogle() {
     try {
       setBusy(true);
+
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -78,9 +64,21 @@ export default function Login() {
       if (error) throw error;
       if (!data.url) throw new Error('No se recibió URL de autenticación.');
 
-      await Linking.openURL(data.url);
-    } catch {
-      Alert.alert('No pudimos iniciar sesión', 'No fue posible abrir el acceso con Google. Intenta nuevamente.');
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo, {
+        showInRecents: true,
+      });
+
+      if (result.type !== 'success') return;
+
+      await completeOAuth(result.url);
+      router.replace('/');
+    } catch (error) {
+      console.error('Google OAuth failed', error);
+      Alert.alert(
+        'No pudimos iniciar sesión',
+        'No fue posible completar el acceso con Google. Intenta nuevamente.',
+      );
+    } finally {
       setBusy(false);
     }
   }
@@ -94,7 +92,7 @@ export default function Login() {
         <Pressable disabled={busy} style={[s.button, busy && s.disabled]} onPress={signInWithGoogle}>
           <Text style={s.google}>G</Text><Text style={s.buttonText}>{busy ? 'Ingresando…' : 'Continuar con Google'}</Text>
         </Pressable>
-        <Text style={s.legal}>Al continuar, Google se abrirá de forma segura para autenticar tu cuenta. After no recibe tu contraseña.</Text>
+        <Text style={s.legal}>Al continuar, la autenticación se realiza con Google. Los permisos familiares se administran exclusivamente dentro de Lestra After.</Text>
       </View>
     </SafeAreaView>
   );
