@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-apk:
@@ -44,10 +44,17 @@ jobs:
         run: |
           test -f android/app/build/outputs/apk/release/app-release.apk
           unzip -l android/app/build/outputs/apk/release/app-release.apk | grep -E 'assets/index.android.bundle|assets/.*\.bundle' >/dev/null
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Lestra-After-Beta-Android-Standalone
-          path: android/app/build/outputs/apk/release/app-release.apk
-          if-no-files-found: error
-          retention-days: 7
+      - name: Publish beta APK as GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.0.apk
+          if gh release view after-beta-0.5.0 >/dev/null 2>&1; then
+            gh release upload after-beta-0.5.0 Lestra-After-Beta-0.5.0.apk --clobber
+          else
+            gh release create after-beta-0.5.0 Lestra-After-Beta-0.5.0.apk \
+              --title "Lestra After Beta 0.5.0" \
+              --notes "Beta interna Android: OCR local en el dispositivo, PDF/foto/cámara, selectores visuales de fecha y hora y nueva experiencia familiar." \
+              --prerelease \
+              --target "$GITHUB_SHA"
+          fi
