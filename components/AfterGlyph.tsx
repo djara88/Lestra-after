@@ -8,7 +8,7 @@ export function AfterGlyph({kind,active=false,size=28,surface=true}:Props){
   const ink=active?'#314A38':'#8D8178';
   const accent=active?'#F28B57':'#B9ADA4';
   const scale=size/28;
-  return <View style={[s.wrap,surface&&s.surface,active&&surface&&s.surfaceActive,{width:size+10,height:size+8}]}> 
+  return <View style={[s.wrap,surface&&s.surface,active&&surface&&s.surfaceActive,{width:size+10,height:size+8}]}>
     <View style={[s.canvas,{transform:[{scale}]}]}>
       {kind==='today'?<>
         <View style={[s.todayRing,{borderColor:ink}]}/>
