@@ -1,73 +1,45 @@
 import { useEffect, useState } from 'react';
-import { Alert, Linking, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
+import { GoogleSignin, isSuccessResponse, statusCodes } from '@react-native-google-signin/google-signin';
 import { supabase } from '@/lib/supabase';
-import { completeOAuthUrl, dismissOAuthBrowser, GOOGLE_REDIRECT } from '@/lib/mobile-oauth';
 
-WebBrowser.maybeCompleteAuthSession();
+const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
 
 export default function Login() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void WebBrowser.warmUpAsync();
-    return () => {
-      void WebBrowser.coolDownAsync();
-    };
+    if (webClientId) GoogleSignin.configure({ webClientId, iosClientId });
   }, []);
 
   async function signInWithGoogle() {
-    let handled = false;
-    let callbackSubscription: ReturnType<typeof Linking.addEventListener> | null = null;
-
-    const finish = async (url: string) => {
-      if (handled || !url.startsWith(GOOGLE_REDIRECT)) return;
-      handled = true;
-      dismissOAuthBrowser();
-      await completeOAuthUrl(url);
-      router.replace('/');
-    };
+    if (!webClientId) {
+      Alert.alert('Configuración pendiente', 'El acceso con Google aún no tiene configurado su Client ID.');
+      return;
+    }
 
     try {
       setBusy(true);
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await GoogleSignin.signIn();
+      if (!isSuccessResponse(response) || !response.data.idToken) return;
 
-      callbackSubscription = Linking.addEventListener('url', ({ url }) => {
-        void finish(url).catch((error) => {
-          console.error('Google OAuth deep-link callback failed', error);
-          Alert.alert('No pudimos iniciar sesión', 'Google respondió, pero no pudimos cerrar correctamente el acceso. Intenta nuevamente.');
-          setBusy(false);
-        });
-      });
-
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      const { error } = await supabase.auth.signInWithIdToken({
         provider: 'google',
-        options: {
-          redirectTo: GOOGLE_REDIRECT,
-          skipBrowserRedirect: true,
-          queryParams: { prompt: 'select_account' },
-        },
+        token: response.data.idToken,
       });
       if (error) throw error;
-      if (!data.url) throw new Error('No se recibió URL de autenticación.');
 
-      const result = await WebBrowser.openAuthSessionAsync(data.url, GOOGLE_REDIRECT, {
-        showInRecents: false,
-      });
-
-      if (result.type === 'success') {
-        await finish(result.url);
-      }
-    } catch (error) {
-      console.error('Google OAuth failed', error);
-      dismissOAuthBrowser();
-      Alert.alert(
-        'No pudimos iniciar sesión',
-        'No fue posible completar el acceso con Google. Intenta nuevamente.',
-      );
+      router.replace('/');
+    } catch (error: any) {
+      if (error?.code === statusCodes.SIGN_IN_CANCELLED) return;
+      if (error?.code === statusCodes.IN_PROGRESS) return;
+      console.error('Google native sign-in failed', error);
+      Alert.alert('No pudimos iniciar sesión', 'Intenta nuevamente. Si el problema continúa, revisaremos la configuración de acceso.');
     } finally {
-      callbackSubscription?.remove();
-      if (!handled) setBusy(false);
+      setBusy(false);
     }
   }
 
