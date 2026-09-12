@@ -48,13 +48,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.0.apk
-          if gh release view after-beta-0.5.0 >/dev/null 2>&1; then
-            gh release upload after-beta-0.5.0 Lestra-After-Beta-0.5.0.apk --clobber
+          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.1.apk
+          if gh release view after-beta-0.5.1 >/dev/null 2>&1; then
+            gh release upload after-beta-0.5.1 Lestra-After-Beta-0.5.1.apk --clobber
           else
-            gh release create after-beta-0.5.0 Lestra-After-Beta-0.5.0.apk \
-              --title "Lestra After Beta 0.5.0" \
-              --notes "Beta interna Android: OCR local en el dispositivo, PDF/foto/cámara, selectores visuales de fecha y hora y nueva experiencia familiar." \
+            gh release create after-beta-0.5.1 Lestra-After-Beta-0.5.1.apk \
+              --title "Lestra After Beta 0.5.1" \
+              --notes "Corrección Android: restaura el inicio de sesión nativo con Google y mantiene el rediseño responsive e iconografía propia de After." \
               --prerelease \
               --target "$GITHUB_SHA"
           fi
