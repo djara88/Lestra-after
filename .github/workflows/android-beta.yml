@@ -54,13 +54,19 @@ jobs:
         run: |
           test -f android/app/build/outputs/apk/release/app-release.apk
           unzip -l android/app/build/outputs/apk/release/app-release.apk | grep -E 'assets/index.android.bundle|assets/.*\.bundle' >/dev/null
-      - name: Print Android signing certificate SHA-1
-        run: keytool -printcert -jarfile android/app/build/outputs/apk/release/app-release.apk | grep -E 'SHA1:' || true
+      - name: Prepare APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.2.apk
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lestra-After-Beta-0.5.2
+          path: Lestra-After-Beta-0.5.2.apk
+          if-no-files-found: error
+          retention-days: 7
       - name: Publish beta APK as GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.2.apk
           if gh release view after-beta-0.5.2 >/dev/null 2>&1; then
             gh release upload after-beta-0.5.2 Lestra-After-Beta-0.5.2.apk --clobber
           else
