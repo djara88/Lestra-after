@@ -48,13 +48,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.4.apk
-          if gh release view after-beta-0.5.4 >/dev/null 2>&1; then
-            gh release upload after-beta-0.5.4 Lestra-After-Beta-0.5.4.apk --clobber
+          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.5.apk
+          if gh release view after-beta-0.5.5 >/dev/null 2>&1; then
+            gh release upload after-beta-0.5.5 Lestra-After-Beta-0.5.5.apk --clobber
           else
-            gh release create after-beta-0.5.4 Lestra-After-Beta-0.5.4.apk \
-              --title "Lestra After Beta 0.5.4" \
-              --notes "Nueva rutina Mochila: horario escolar semanal por hijo, materiales habituales por asignatura, checklist diario persistente y combinación automática con materiales especiales de tareas y pruebas. Incluye además las mejoras anteriores de Today Flow, OCR, estudio y coordinación familiar." \
+            gh release create after-beta-0.5.5 Lestra-After-Beta-0.5.5.apk \
+              --title "Lestra After Beta 0.5.5" \
+              --notes "Corrección OCR de fechas: cada tarea, prueba o evento se asocia a su fecha local o al encabezado de fecha más cercano. Se elimina el fallback que podía asignar la primera fecha del documento a todos los ítems. Si una fecha es ambigua, After la deja pendiente de revisión en vez de inventarla. Mantiene Mochila, Today Flow, estudio y coordinación familiar." \
               --prerelease \
               --target "$GITHUB_SHA"
           fi
