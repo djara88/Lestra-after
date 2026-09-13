@@ -16,6 +16,7 @@ export function ChildSwitcher({ children, value, onChange }: Props) {
 
   if (children.length === 1) {
     const child = children[0];
+    if (!child) return null;
     return (
       <View style={s.single} accessibilityRole="summary">
         <Text style={s.singleName}>{childName(child)}</Text>
