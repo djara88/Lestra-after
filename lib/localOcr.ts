@@ -144,7 +144,7 @@ function dateFromText(text: string, hint: DateHint = {}): Date | null {
     const month = Number(numeric[2]) - 1;
     const year = normalizeYear(numeric[3], fallbackYear);
     const date = validDate(year, month, day);
-    if (date) return rollForwardIfYearMissing(date, Boolean(numeric[3]));
+    if (date) return rollForwardIfYearMissing(date, Boolean(numeric[3] || hint.year));
   }
 
   const named = normalized.match(/\b([0-3]?\d)\s+(?:de\s+)?(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)(?:\s+(?:de\s+)?(20\d{2}))?\b/);
@@ -154,7 +154,7 @@ function dateFromText(text: string, hint: DateHint = {}): Date | null {
     const year = normalizeYear(named[3], fallbackYear);
     if (month !== undefined) {
       const date = validDate(year, month, day);
-      if (date) return rollForwardIfYearMissing(date, Boolean(named[3]));
+      if (date) return rollForwardIfYearMissing(date, Boolean(named[3] || hint.year));
     }
   }
 
@@ -165,7 +165,7 @@ function dateFromText(text: string, hint: DateHint = {}): Date | null {
     const year = normalizeYear(weekdayDay[4], fallbackYear);
     if (month !== undefined) {
       const date = validDate(year, month, day);
-      if (date) return rollForwardIfYearMissing(date, Boolean(weekdayDay[4]));
+      if (date) return rollForwardIfYearMissing(date, Boolean(weekdayDay[4] || hint.year));
     }
   }
 
@@ -255,8 +255,8 @@ export function parseSchoolText(rawText: string): LocalCandidate[] {
 
     const previousDate = isDateDetailLine(previous, hint) ? dateFromText(previous as string, hint) : null;
     const nextDate = isDateDetailLine(next, hint) ? dateFromText(next as string, hint) : null;
-    const resolvedDate = lineDate ?? previousDate ?? nextDate ?? activeDate;
-    const timingContext = [previousDate ? previous : null, line, nextDate ? next : null]
+    const resolvedDate = lineDate ?? previousDate ?? activeDate ?? nextDate;
+    const timingContext = [previousDate ? previous : null, line, !activeDate && nextDate ? next : null]
       .filter((value): value is string => Boolean(value))
       .join(' · ');
 
