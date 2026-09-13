@@ -23,6 +23,8 @@ export default function AppLayout(){
     <Tabs.Screen name="estudio" options={{href:null}}/>
     <Tabs.Screen name="composer" options={{href:null}}/>
     <Tabs.Screen name="editar" options={{href:null}}/>
+    <Tabs.Screen name="coordinar" options={{href:null}}/>
+    <Tabs.Screen name="responsabilidad" options={{href:null}}/>
   </Tabs>;
 }
 
