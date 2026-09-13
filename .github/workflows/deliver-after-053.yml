@@ -11,7 +11,7 @@ permissions:
 jobs:
   deliver:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Download APK from private release
         env:
@@ -28,9 +28,9 @@ jobs:
         run: |
           set -euo pipefail
           response=$(curl -L --fail --silent --show-error --max-time 300 \
-            https://bashupload.com/Lestra-After-Beta-0.5.3.apk \
-            --data-binary @Lestra-After-Beta-0.5.3.apk)
+            -F 'files[]=@Lestra-After-Beta-0.5.3.apk' \
+            https://uguu.se/upload)
           echo "$response"
-          url=$(printf '%s\n' "$response" | grep -Eo 'https?://[^[:space:]<>]+' | tail -n1 | sed 's/["'"'']//g')
+          url=$(printf '%s' "$response" | jq -r '.files[0].url // empty')
           test -n "$url"
           echo "APK_TEMP_URL=$url"
