@@ -1,53 +1,338 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { supabase } from '@/lib/supabase';
+import { ChildSwitcher } from '@/components/after/ChildSwitcher';
+import { NowBlock } from '@/components/after/NowBlock';
+import { PreparationChecklist } from '@/components/after/PreparationChecklist';
+import {
+  getTodayFlow,
+  markAcademicDone,
+  selectNowAndNext,
+  setMaterialPacked,
+  type AfterChild,
+  type DailyFlow,
+  type FlowItem,
+  type MaterialItem,
+} from '@/lib/afterDaily';
 
-type Child={id:string;first_name:string;preferred_name?:string|null;relationship_label?:string|null;school_name?:string|null;grade_level?:string|null};
-type Context={display_name?:string;family_name?:string;students?:Child[]};
-type FlowItem={kind:'academic'|'event';id:string;student_id?:string|null;title:string;category:string;starts_at?:string|null;status?:string;priority?:string;subject?:string;location?:string|null};
-type Material={id:string;student_id:string;name:string;packed:boolean;task_title:string};
-type Overview={overdue:FlowItem[];today:FlowItem[];tomorrow:FlowItem[];week:FlowItem[];tomorrow_materials:Material[]};
-const labels:Record<string,string>={task:'Tarea',test:'Prueba',exam:'Examen',project:'Proyecto',material:'Material',school_event:'Colegio',school:'Colegio',study:'Estudio',sport:'Deporte',health:'Salud',social:'Actividad',family:'Familia',other:'Otro'};
-const icons:Record<string,string>={task:'📝',test:'📚',exam:'📚',project:'🧩',material:'🎒',school_event:'🏫',school:'🏫',study:'🌱',sport:'⚽',health:'💛',social:'🎈',family:'🏡',other:'•'};
-function timeLabel(value?:string|null){if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'});}
-function dayLabel(value?:string|null){if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleDateString('es-CL',{weekday:'short',day:'numeric',month:'short'});}
+const labels: Record<string, string> = {
+  task: 'Tarea', test: 'Prueba', exam: 'Examen', project: 'Proyecto', material: 'Material',
+  school_event: 'Colegio', school: 'Colegio', study: 'Estudio', sport: 'Deporte', health: 'Salud',
+  social: 'Actividad', family: 'Familia', other: 'Otro',
+};
 
-export default function Today(){
-  const [context,setContext]=useState<Context>({});const [overview,setOverview]=useState<Overview|null>(null);const [loading,setLoading]=useState(true);const [loadError,setLoadError]=useState(false);const [busyId,setBusyId]=useState<string|null>(null);const [childId,setChildId]=useState<string>('all');
-  const load=useCallback(async()=>{setLoading(true);setLoadError(false);const [{data:ctx,error:ctxError},{data:flow,error:flowError}]=await Promise.all([supabase.rpc('after_my_context'),supabase.rpc('after_school_overview')]);if(ctxError||flowError){setLoadError(true);setLoading(false);return;}const next=(ctx??{}) as Context;setContext(next);setOverview((flow??{overdue:[],today:[],tomorrow:[],week:[],tomorrow_materials:[]}) as Overview);setChildId(current=>current==='all'||next.students?.some(c=>c.id===current)?current:'all');setLoading(false);},[]);
-  useFocusEffect(useCallback(()=>{void load();},[load]));
-  const children=context.students??[];
-  const childName=useCallback((id?:string|null)=>{const child=children.find(x=>x.id===id);return child?.preferred_name||child?.first_name||'Familia';},[children]);
-  const filterItems=useCallback((items:FlowItem[]|undefined)=>items?.filter(item=>childId==='all'||item.student_id===childId)??[],[childId]);
-  const filteredToday=useMemo(()=>filterItems(overview?.today),[overview,filterItems]);const filteredTomorrow=useMemo(()=>filterItems(overview?.tomorrow),[overview,filterItems]);const filteredLate=useMemo(()=>filterItems(overview?.overdue),[overview,filterItems]);const filteredWeek=useMemo(()=>filterItems(overview?.week),[overview,filterItems]);const filteredMaterials=useMemo(()=>overview?.tomorrow_materials.filter(item=>childId==='all'||item.student_id===childId)??[],[overview,childId]);
-  const nowItem=useMemo(()=>{const current=Date.now();return filteredToday.find(item=>item.starts_at&&new Date(item.starts_at).getTime()>=current)??filteredToday[0]??null;},[filteredToday]);
+const icons: Record<string, string> = {
+  task: '📝', test: '📚', exam: '📚', project: '🧩', material: '🎒', school_event: '🏫', school: '🏫',
+  study: '🌱', sport: '⚽', health: '💛', social: '🎈', family: '🏡', other: '•',
+};
 
-  async function setDone(item:FlowItem){if(item.kind!=='academic'||busyId)return;setBusyId(item.id);const {error}=await supabase.rpc('after_update_academic_status',{p_item_id:item.id,p_status:'done'});setBusyId(null);if(!error)await load();}
-  async function setPacked(material:Material){if(busyId)return;setBusyId(material.id);const {error}=await supabase.rpc('after_set_material_packed',{p_material_id:material.id,p_packed:!material.packed});setBusyId(null);if(!error)await load();}
-
-  function FlowRow({item}:{item:FlowItem}){return <View style={s.rowItem}><View style={s.iconBubble}><Text style={s.icon}>{icons[item.category]??'•'}</Text></View><View style={s.rowContent}><Text style={s.rowTitle}>{item.title}</Text><Text style={s.meta}>{timeLabel(item.starts_at)||'Sin hora'} · {labels[item.category]??item.category}{item.subject?` · ${item.subject}`:''}{childId==='all'?` · ${childName(item.student_id)}`:''}</Text></View>{item.kind==='academic'?<Pressable disabled={busyId===item.id} onPress={()=>void setDone(item)} style={s.doneButton}><Text style={s.doneText}>{busyId===item.id?'…':'✓'}</Text></Pressable>:null}</View>;}
-
-  return <SafeAreaView style={s.safe}><ScrollView contentContainerStyle={s.body} refreshControl={<RefreshControl refreshing={loading} onRefresh={load}/>}>
-    <View style={s.greetingRow}><View><Text style={s.kicker}>{new Date().toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long'}).toUpperCase()}</Text><Text style={s.title}>Hola{context.display_name?`, ${context.display_name.split(' ')[0]}`:''} 👋</Text><Text style={s.copy}>Veamos qué necesita tu familia hoy y qué podemos dejar listo para mañana.</Text></View></View>
-
-    {children.length>1?<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.childChips}><Pressable onPress={()=>setChildId('all')} style={[s.childChip,childId==='all'&&s.childChipActive]}><Text style={[s.childChipText,childId==='all'&&s.childChipTextActive]}>Todos</Text></Pressable>{children.map(child=><Pressable key={child.id} onPress={()=>setChildId(child.id)} style={[s.childChip,childId===child.id&&s.childChipActive]}><Text style={[s.childChipText,childId===child.id&&s.childChipTextActive]}>{child.preferred_name||child.first_name}</Text></Pressable>)}</ScrollView>:children[0]?<View style={s.singleChild}><Text style={s.singleChildName}>{children[0].preferred_name||children[0].first_name}</Text><Text style={s.singleChildMeta}>{children[0].relationship_label||'Niño/a'}{children[0].grade_level?` · ${children[0].grade_level}`:''}</Text></View>:null}
-
-    {loading&&!overview?<View style={s.loading}><ActivityIndicator/><Text style={s.muted}>Ordenando el día…</Text></View>:loadError?<View style={s.stateBox}><Text style={s.stateTitle}>No pudimos cargar tu día.</Text><Text style={s.muted}>Tu información sigue protegida. Revisa la conexión y vuelve a intentar.</Text><Pressable onPress={()=>void load()} style={s.primary}><Text style={s.primaryText}>Reintentar</Text></Pressable></View>:<>
-      <View style={s.heroCard}><View style={s.heroTop}><Text style={s.heroEmoji}>{nowItem?'✨':'☀️'}</Text><Text style={s.heroLabel}>AHORA / SIGUIENTE</Text></View>{nowItem?<><Text style={s.heroTitle}>{nowItem.title}</Text><Text style={s.heroMeta}>{timeLabel(nowItem.starts_at)||'Sin hora'} · {labels[nowItem.category]??nowItem.category}{childId==='all'?` · ${childName(nowItem.student_id)}`:''}</Text></>:<><Text style={s.heroTitle}>Todo tranquilo por ahora</Text><Text style={s.heroMeta}>Buen momento para revisar mañana o subir algo que mandó el colegio.</Text></>}<Pressable onPress={()=>router.push('/(app)/agregar')} style={s.heroAction}><Text style={s.heroActionText}>📷 Leer algo del colegio</Text></Pressable></View>
-
-      {filteredLate.length>0?<View style={s.section}><View style={s.sectionHead}><Text style={s.sectionTitle}>Necesita atención</Text><Text style={s.warning}>{filteredLate.length}</Text></View>{filteredLate.map(item=><FlowRow key={`late-${item.id}`} item={item}/>)}</View>:null}
-
-      <View style={s.section}><View style={s.sectionHead}><Text style={s.sectionTitle}>Hoy</Text><Text style={s.sectionHint}>{filteredToday.length} pendiente(s)</Text></View>{filteredToday.length?filteredToday.map(item=><FlowRow key={`${item.kind}-${item.id}`} item={item}/>):<View style={s.empty}><Text style={s.emptyEmoji}>🌿</Text><View style={s.rowContent}><Text style={s.emptyTitle}>Hoy está despejado</Text><Text style={s.muted}>No hay nada pendiente para hoy.</Text></View></View>}</View>
-
-      <View style={s.tomorrowCard}><View style={s.sectionHead}><View><Text style={s.cardKicker}>PREPARAR</Text><Text style={s.sectionTitle}>Mañana</Text></View><Pressable onPress={()=>router.push('/(app)/agenda')}><Text style={s.link}>Ver semana</Text></Pressable></View>{filteredTomorrow.length?filteredTomorrow.map(item=><FlowRow key={`tomorrow-${item.kind}-${item.id}`} item={item}/>):<Text style={s.muted}>No hay entregas, pruebas o actividades registradas para mañana.</Text>}
-        <View style={s.bagHead}><Text style={s.bagTitle}>🎒 Mochila y materiales</Text><Text style={s.sectionHint}>{filteredMaterials.filter(x=>x.packed).length}/{filteredMaterials.length}</Text></View>{filteredMaterials.length?filteredMaterials.map(material=><Pressable key={material.id} disabled={busyId===material.id} onPress={()=>void setPacked(material)} style={s.materialRow}><View style={[s.check,material.packed&&s.checkDone]}><Text style={s.checkText}>{material.packed?'✓':''}</Text></View><View style={s.rowContent}><Text style={[s.materialName,material.packed&&s.strike]}>{material.name}</Text><Text style={s.meta}>{material.task_title}{childId==='all'?` · ${childName(material.student_id)}`:''}</Text></View></Pressable>):<Text style={s.muted}>Todavía no hay materiales asociados a mañana.</Text>}</View>
-
-      <View style={s.quickActions}><Pressable onPress={()=>router.push('/(app)/estudio')} style={s.quickCard}><Text style={s.quickEmoji}>🌱</Text><Text style={s.quickTitle}>Preparar estudio</Text><Text style={s.quickCopy}>Reserva un ratito para una prueba o tarea.</Text></Pressable><Pressable onPress={()=>router.push('/(app)/familia')} style={s.quickCard}><Text style={s.quickEmoji}>🏡</Text><Text style={s.quickTitle}>Coordinar en casa</Text><Text style={s.quickCopy}>Reparte pendientes entre los adultos.</Text></Pressable></View>
-
-      {filteredWeek.length>0?<View style={s.section}><Text style={s.sectionTitle}>Después</Text>{filteredWeek.slice(0,5).map(item=><View key={`week-${item.id}`} style={s.weekRow}><Text style={s.weekDate}>{dayLabel(item.starts_at)}</Text><View style={s.rowContent}><Text style={s.rowTitle}>{item.title}</Text><Text style={s.meta}>{item.subject||labels[item.category]||item.category}{childId==='all'?` · ${childName(item.student_id)}`:''}</Text></View></View>)}</View>:null}
-    </>}
-  </ScrollView></SafeAreaView>;
+function timeLabel(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
 }
 
-const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#FFF8F1'},body:{paddingHorizontal:18,paddingTop:18,paddingBottom:60,gap:18},greetingRow:{gap:8},kicker:{fontSize:10.5,fontWeight:'900',letterSpacing:1.1,color:'#9A7A60'},title:{fontSize:34,lineHeight:39,fontWeight:'900',letterSpacing:-1,color:'#2B2926',marginTop:3},copy:{fontSize:15,lineHeight:22,color:'#71665C',maxWidth:520,marginTop:5},childChips:{gap:8,paddingVertical:2},childChip:{paddingHorizontal:13,paddingVertical:9,borderRadius:999,backgroundColor:'#FFFDF9',borderWidth:1,borderColor:'#E8DDD1'},childChipActive:{backgroundColor:'#6F8F68',borderColor:'#6F8F68'},childChipText:{fontSize:13,fontWeight:'800',color:'#6B6056'},childChipTextActive:{color:'#FFF'},singleChild:{backgroundColor:'#EAF4E5',padding:13,borderRadius:17},singleChildName:{fontSize:16,fontWeight:'900',color:'#314631'},singleChildMeta:{fontSize:12,color:'#60745E',marginTop:2},loading:{paddingVertical:34,alignItems:'center',gap:12},muted:{fontSize:13,lineHeight:19,color:'#81756A'},stateBox:{backgroundColor:'#FFFDF9',borderWidth:1,borderColor:'#E8DDD1',borderRadius:20,padding:18,gap:10},stateTitle:{fontSize:18,fontWeight:'900',color:'#302D29'},primary:{alignSelf:'flex-start',backgroundColor:'#6F8F68',borderRadius:12,paddingHorizontal:14,paddingVertical:10},primaryText:{color:'#FFF',fontWeight:'900'},heroCard:{backgroundColor:'#F58B57',borderRadius:24,padding:19,gap:8},heroTop:{flexDirection:'row',alignItems:'center',gap:7},heroEmoji:{fontSize:16},heroLabel:{fontSize:10,fontWeight:'900',letterSpacing:1.1,color:'#FFE8DA'},heroTitle:{fontSize:24,lineHeight:29,fontWeight:'900',color:'#FFF'},heroMeta:{fontSize:13,lineHeight:19,color:'#FFF2E9'},heroAction:{alignSelf:'flex-start',backgroundColor:'#FFF8F1',borderRadius:12,paddingHorizontal:12,paddingVertical:9,marginTop:5},heroActionText:{fontSize:12,fontWeight:'900',color:'#A6532D'},section:{gap:4},sectionHead:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:5},sectionTitle:{fontSize:21,fontWeight:'900',color:'#302D29'},sectionHint:{fontSize:12,fontWeight:'800',color:'#9A8C80'},warning:{fontSize:12,fontWeight:'900',color:'#B85B50'},rowItem:{flexDirection:'row',alignItems:'center',gap:10,paddingVertical:11,borderBottomWidth:1,borderBottomColor:'#EDE1D7'},iconBubble:{width:34,height:34,borderRadius:12,backgroundColor:'#FFF0E4',alignItems:'center',justifyContent:'center'},icon:{fontSize:16},rowContent:{flex:1},rowTitle:{fontSize:15,fontWeight:'800',color:'#302D29'},meta:{fontSize:11.5,lineHeight:17,color:'#8A7E72',marginTop:3},doneButton:{width:34,height:34,borderRadius:12,backgroundColor:'#EAF4E5',alignItems:'center',justifyContent:'center'},doneText:{fontSize:14,fontWeight:'900',color:'#50704D'},empty:{flexDirection:'row',gap:11,alignItems:'center',backgroundColor:'#FFFDF9',borderRadius:18,padding:14,borderWidth:1,borderColor:'#EEE3D9'},emptyEmoji:{fontSize:24},emptyTitle:{fontSize:16,fontWeight:'900',color:'#302D29'},tomorrowCard:{backgroundColor:'#EEF4EA',borderRadius:24,padding:17,gap:4},cardKicker:{fontSize:10,fontWeight:'900',letterSpacing:1.1,color:'#7D9676'},link:{fontSize:12,fontWeight:'900',color:'#567050'},bagHead:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginTop:15,marginBottom:3},bagTitle:{fontSize:16,fontWeight:'900',color:'#30432F'},materialRow:{flexDirection:'row',alignItems:'center',gap:10,paddingVertical:9},check:{width:24,height:24,borderRadius:8,borderWidth:1.5,borderColor:'#B8C8B4',alignItems:'center',justifyContent:'center',backgroundColor:'#FFF'},checkDone:{backgroundColor:'#6F8F68',borderColor:'#6F8F68'},checkText:{color:'#FFF',fontWeight:'900'},materialName:{fontSize:14,fontWeight:'800',color:'#30432F'},strike:{textDecorationLine:'line-through',color:'#879883'},quickActions:{flexDirection:'row',gap:10},quickCard:{flex:1,backgroundColor:'#FFFDF9',borderWidth:1,borderColor:'#E8DDD1',borderRadius:20,padding:14},quickEmoji:{fontSize:22},quickTitle:{fontSize:14,fontWeight:'900',color:'#302D29',marginTop:7},quickCopy:{fontSize:11.5,lineHeight:17,color:'#81756A',marginTop:4},weekRow:{flexDirection:'row',gap:12,paddingVertical:11,borderBottomWidth:1,borderBottomColor:'#EDE1D7'},weekDate:{width:72,fontSize:12,fontWeight:'800',textTransform:'capitalize',color:'#7C6E62'}});
+function dayLabel(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function displayChild(child: AfterChild) {
+  return child.preferred_name || child.first_name;
+}
+
+type LoadState = 'loading' | 'ready' | 'error';
+
+export default function Today() {
+  const [flow, setFlow] = useState<DailyFlow | null>(null);
+  const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [refreshing, setRefreshing] = useState(false);
+  const [stale, setStale] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [childId, setChildId] = useState('all');
+
+  const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
+    if (mode === 'refresh') setRefreshing(true);
+    else if (!flow) setLoadState('loading');
+
+    try {
+      const next = await getTodayFlow();
+      setFlow(next);
+      setLoadState('ready');
+      setStale(false);
+      setChildId(current => current === 'all' || next.context.students?.some(child => child.id === current) ? current : 'all');
+    } catch {
+      if (flow) {
+        setStale(true);
+        setLoadState('ready');
+      } else {
+        setLoadState('error');
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }, [flow]);
+
+  useFocusEffect(useCallback(() => {
+    void load('initial');
+  }, [load]));
+
+  const children = flow?.context.students ?? [];
+  const overview = flow?.overview;
+  const showChild = childId === 'all' && children.length > 1;
+
+  const childName = useCallback((studentId?: string | null) => {
+    const child = children.find(item => item.id === studentId);
+    return child ? displayChild(child) : 'Familia';
+  }, [children]);
+
+  const filterItems = useCallback((items: FlowItem[] | undefined) => {
+    return items?.filter(item => childId === 'all' || item.student_id === childId) ?? [];
+  }, [childId]);
+
+  const today = useMemo(() => filterItems(overview?.today), [filterItems, overview?.today]);
+  const tomorrow = useMemo(() => filterItems(overview?.tomorrow), [filterItems, overview?.tomorrow]);
+  const overdue = useMemo(() => filterItems(overview?.overdue), [filterItems, overview?.overdue]);
+  const week = useMemo(() => filterItems(overview?.week), [filterItems, overview?.week]);
+  const materials = useMemo(() => overview?.tomorrow_materials.filter(item => childId === 'all' || item.student_id === childId) ?? [], [overview?.tomorrow_materials, childId]);
+  const { current, next } = useMemo(() => selectNowAndNext(today), [today]);
+  const alsoToday = useMemo(() => today.filter(item => item.id !== current?.id && item.id !== next?.id), [today, current?.id, next?.id]);
+
+  async function complete(item: FlowItem) {
+    if (item.kind !== 'academic' || busyId) return;
+    setBusyId(item.id);
+    try {
+      await markAcademicDone(item.id);
+      await load('refresh');
+    } catch {
+      Alert.alert('No pudimos marcarlo como listo', 'Tu información no se perdió. Vuelve a intentar.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function toggleMaterial(material: MaterialItem) {
+    if (busyId) return;
+    setBusyId(material.id);
+    try {
+      await setMaterialPacked(material.id, !material.packed);
+      await load('refresh');
+    } catch {
+      Alert.alert('No pudimos actualizar la mochila', 'Tu información no se perdió. Vuelve a intentar.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function FlowRow({ item }: { item: FlowItem }) {
+    return (
+      <View style={s.rowItem}>
+        <View style={s.iconBubble}><Text style={s.icon}>{icons[item.category] ?? '•'}</Text></View>
+        <View style={s.rowContent}>
+          <Text style={s.rowTitle}>{item.title}</Text>
+          <Text style={s.meta}>
+            {timeLabel(item.starts_at) || 'Sin hora'} · {labels[item.category] ?? item.category}
+            {item.subject ? ` · ${item.subject}` : ''}{showChild ? ` · ${childName(item.student_id)}` : ''}
+          </Text>
+        </View>
+        {item.kind === 'academic' ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Marcar ${item.title} como listo`}
+            disabled={busyId === item.id}
+            onPress={() => void complete(item)}
+            style={s.doneButton}
+          >
+            <Text style={s.doneText}>{busyId === item.id ? '…' : '✓'}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
+
+  const firstName = flow?.context.display_name?.split(' ')[0];
+
+  return (
+    <SafeAreaView style={s.safe}>
+      <ScrollView
+        contentContainerStyle={s.body}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load('refresh')} />}
+      >
+        <View style={s.greeting}>
+          <Text style={s.kicker}>{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}</Text>
+          <Text style={s.title}>Hola{firstName ? `, ${firstName}` : ''}</Text>
+          <Text style={s.copy}>Lo importante primero: qué ocurre ahora, qué viene después y qué conviene dejar preparado.</Text>
+        </View>
+
+        {children.length > 0 ? <ChildSwitcher children={children} value={childId} onChange={setChildId} /> : null}
+
+        {stale ? (
+          <View style={s.stale} accessibilityRole="alert">
+            <Text style={s.staleTitle}>Mostrando el último estado disponible</Text>
+            <Text style={s.staleCopy}>No pudimos actualizar la información. Revisa la conexión y vuelve a intentar.</Text>
+            <Pressable onPress={() => void load('refresh')} style={s.retryLink}><Text style={s.retryText}>Reintentar</Text></Pressable>
+          </View>
+        ) : null}
+
+        {loadState === 'loading' && !flow ? (
+          <View style={s.loading}><ActivityIndicator /><Text style={s.muted}>Ordenando el día…</Text></View>
+        ) : loadState === 'error' && !flow ? (
+          <View style={s.stateBox} accessibilityRole="alert">
+            <Text style={s.stateTitle}>No pudimos cargar tu día</Text>
+            <Text style={s.muted}>No lo mostraremos como una agenda vacía. Revisa la conexión y vuelve a intentar.</Text>
+            <Pressable onPress={() => void load('initial')} style={s.primary}><Text style={s.primaryText}>Reintentar</Text></Pressable>
+          </View>
+        ) : flow ? (
+          <>
+            <NowBlock
+              current={current}
+              next={next}
+              childName={childName}
+              showChild={showChild}
+              onImportSchool={() => router.push('/(app)/agregar')}
+            />
+
+            {overdue.length > 0 ? (
+              <View style={s.section}>
+                <View style={s.sectionHead}>
+                  <Text style={s.sectionTitle}>Necesita atención</Text>
+                  <Text style={s.warning}>{overdue.length}</Text>
+                </View>
+                {overdue.map(item => <FlowRow key={`late-${item.id}`} item={item} />)}
+              </View>
+            ) : null}
+
+            <View style={s.section}>
+              <View style={s.sectionHead}>
+                <Text style={s.sectionTitle}>También hoy</Text>
+                <Text style={s.sectionHint}>{alsoToday.length} pendiente(s)</Text>
+              </View>
+              {alsoToday.length > 0 ? alsoToday.map(item => <FlowRow key={`${item.kind}-${item.id}`} item={item} />) : (
+                <View style={s.empty}>
+                  <Text style={s.emptyEmoji}>🌿</Text>
+                  <View style={s.rowContent}>
+                    <Text style={s.emptyTitle}>No hay más pendientes registrados para hoy</Text>
+                    <Text style={s.muted}>Puedes revisar mañana o incorporar algo que mandó el colegio.</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+
+            <View style={s.tomorrowCard}>
+              <View style={s.sectionHead}>
+                <View>
+                  <Text style={s.cardKicker}>PREPARAR</Text>
+                  <Text style={s.sectionTitle}>Mañana</Text>
+                </View>
+                <Pressable accessibilityRole="button" onPress={() => router.push('/(app)/agenda')}>
+                  <Text style={s.link}>Ver semana</Text>
+                </Pressable>
+              </View>
+
+              {tomorrow.length > 0 ? tomorrow.map(item => <FlowRow key={`tomorrow-${item.kind}-${item.id}`} item={item} />) : (
+                <Text style={s.muted}>No hay actividades, tareas o pruebas registradas para mañana.</Text>
+              )}
+
+              <PreparationChecklist
+                materials={materials}
+                busyId={busyId}
+                childName={childName}
+                showChild={showChild}
+                onToggle={material => void toggleMaterial(material)}
+              />
+            </View>
+
+            <View style={s.actionRow}>
+              <Pressable accessibilityRole="button" onPress={() => router.push('/(app)/agregar')} style={s.quickAction}>
+                <Text style={s.quickEmoji}>＋</Text>
+                <View style={s.rowContent}>
+                  <Text style={s.quickTitle}>Agregar algo</Text>
+                  <Text style={s.quickCopy}>Foto, PDF o actividad manual.</Text>
+                </View>
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={() => router.push('/(app)/estudio')} style={s.quickAction}>
+                <Text style={s.quickEmoji}>🌱</Text>
+                <View style={s.rowContent}>
+                  <Text style={s.quickTitle}>Preparar estudio</Text>
+                  <Text style={s.quickCopy}>Conecta una tarea o prueba con tiempo real de preparación.</Text>
+                </View>
+              </Pressable>
+            </View>
+
+            {week.length > 0 ? (
+              <View style={s.section}>
+                <Text style={s.sectionTitle}>Después</Text>
+                {week.slice(0, 6).map(item => (
+                  <View key={`week-${item.kind}-${item.id}`} style={s.weekRow}>
+                    <Text style={s.weekDate}>{dayLabel(item.starts_at)}</Text>
+                    <View style={s.rowContent}>
+                      <Text style={s.rowTitle}>{item.title}</Text>
+                      <Text style={s.meta}>{item.subject || labels[item.category] || item.category}{showChild ? ` · ${childName(item.student_id)}` : ''}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </>
+        ) : null}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#FFF8F1' },
+  body: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 64, gap: 18 },
+  greeting: { gap: 4 },
+  kicker: { fontSize: 10.5, fontWeight: '900', letterSpacing: 1.1, color: '#9A7A60' },
+  title: { fontSize: 34, lineHeight: 39, fontWeight: '900', letterSpacing: -1, color: '#2B2926' },
+  copy: { fontSize: 15, lineHeight: 22, color: '#71665C', maxWidth: 560 },
+  loading: { paddingVertical: 40, alignItems: 'center', gap: 12 },
+  muted: { fontSize: 13, lineHeight: 19, color: '#81756A' },
+  stale: { backgroundColor: '#FFF1D6', borderRadius: 17, padding: 14, gap: 4, borderWidth: 1, borderColor: '#ECD5A9' },
+  staleTitle: { fontSize: 14, fontWeight: '900', color: '#765A28' },
+  staleCopy: { fontSize: 12.5, lineHeight: 18, color: '#806C43' },
+  retryLink: { minHeight: 40, justifyContent: 'center', alignSelf: 'flex-start' },
+  retryText: { fontSize: 13, fontWeight: '900', color: '#7B5B20' },
+  stateBox: { backgroundColor: '#FFFDF9', borderWidth: 1, borderColor: '#E8DDD1', borderRadius: 20, padding: 18, gap: 10 },
+  stateTitle: { fontSize: 19, fontWeight: '900', color: '#302D29' },
+  primary: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', backgroundColor: '#597657', borderRadius: 12, paddingHorizontal: 15 },
+  primaryText: { color: '#FFFFFF', fontWeight: '900' },
+  section: { gap: 4 },
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 5 },
+  sectionTitle: { fontSize: 21, fontWeight: '900', color: '#302D29' },
+  sectionHint: { fontSize: 12, fontWeight: '800', color: '#9A8C80' },
+  warning: { minWidth: 28, textAlign: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, overflow: 'hidden', backgroundColor: '#FBE4E0', fontSize: 12, fontWeight: '900', color: '#A94E45' },
+  rowItem: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#EDE1D7' },
+  iconBubble: { width: 36, height: 36, borderRadius: 12, backgroundColor: '#FFF0E4', alignItems: 'center', justifyContent: 'center' },
+  icon: { fontSize: 16 },
+  rowContent: { flex: 1 },
+  rowTitle: { fontSize: 15, fontWeight: '800', color: '#302D29' },
+  meta: { fontSize: 11.5, lineHeight: 17, color: '#8A7E72', marginTop: 3 },
+  doneButton: { width: 44, height: 44, borderRadius: 13, backgroundColor: '#EAF4E5', alignItems: 'center', justifyContent: 'center' },
+  doneText: { fontSize: 15, fontWeight: '900', color: '#50704D' },
+  empty: { flexDirection: 'row', gap: 11, alignItems: 'center', backgroundColor: '#FFFDF9', borderRadius: 18, padding: 14, borderWidth: 1, borderColor: '#EEE3D9' },
+  emptyEmoji: { fontSize: 24 },
+  emptyTitle: { fontSize: 15.5, fontWeight: '900', color: '#302D29' },
+  tomorrowCard: { backgroundColor: '#EEF4EA', borderRadius: 24, padding: 17, gap: 4 },
+  cardKicker: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1, color: '#7D9676' },
+  link: { minHeight: 40, textAlignVertical: 'center', fontSize: 12, fontWeight: '900', color: '#567050' },
+  actionRow: { gap: 9 },
+  quickAction: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFDF9', borderWidth: 1, borderColor: '#E9DED4', borderRadius: 18, padding: 14 },
+  quickEmoji: { fontSize: 20 },
+  quickTitle: { fontSize: 15, fontWeight: '900', color: '#302D29' },
+  quickCopy: { fontSize: 12, lineHeight: 17, color: '#867A70', marginTop: 2 },
+  weekRow: { flexDirection: 'row', gap: 13, alignItems: 'flex-start', paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#EDE1D7' },
+  weekDate: { width: 72, fontSize: 11.5, lineHeight: 17, fontWeight: '900', textTransform: 'capitalize', color: '#8B6F5B' },
+});
