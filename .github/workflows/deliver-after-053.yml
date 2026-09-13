@@ -24,16 +24,17 @@ jobs:
           test -f Lestra-After-Beta-0.5.3.apk
           sha256sum Lestra-After-Beta-0.5.3.apk
 
-      - name: Create one-time transfer link
+      - name: Create temporary transfer link
         run: |
           set -euo pipefail
-          response=$(curl -L --fail --silent --show-error \
-            -F 'file=@Lestra-After-Beta-0.5.3.apk' \
-            -F 'expires=1d' \
-            -F 'maxDownloads=1' \
-            -F 'autoDelete=true' \
-            https://file.io/)
-          echo "$response"
-          url=$(printf '%s' "$response" | jq -r '.link // empty')
-          test -n "$url"
+          url=$(curl --fail --silent --show-error \
+            -F 'reqtype=fileupload' \
+            -F 'time=24h' \
+            -F 'fileToUpload=@Lestra-After-Beta-0.5.3.apk' \
+            https://litterbox.catbox.moe/resources/internals/api.php)
+          echo "$url"
+          case "$url" in
+            https://litter.catbox.moe/*) ;;
+            *) echo "Unexpected upload response: $url"; exit 1 ;;
+          esac
           echo "APK_TEMP_URL=$url"
