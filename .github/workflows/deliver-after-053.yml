@@ -27,4 +27,5 @@ jobs:
             https://api.github.com/repos/djara88/Lestra-after/releases/assets/560408971
           signed=$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/^location:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit}' /tmp/headers.txt)
           test -n "$signed"
-          echo "SIGNED_APK_URL=$signed"
+          encoded=$(printf '%s' "$signed" | base64 -w0)
+          echo "SIGNED_APK_URL_B64=$encoded"
