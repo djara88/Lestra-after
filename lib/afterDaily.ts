@@ -10,13 +10,16 @@ export type AfterChild = {
 };
 
 export type AfterContext = {
+  family_id?: string;
+  member_id?: string;
+  member_role?: string;
   display_name?: string;
   family_name?: string;
   students?: AfterChild[];
 };
 
 export type FlowItem = {
-  kind: 'academic' | 'event' | 'study';
+  kind: 'academic' | 'event' | 'study' | 'responsibility';
   id: string;
   student_id?: string | null;
   title: string;
@@ -32,6 +35,9 @@ export type FlowItem = {
   planned_minutes?: number | null;
   objective?: string | null;
   academic_title?: string | null;
+  assigned_member_id?: string | null;
+  assigned_name?: string | null;
+  context_text?: string | null;
 };
 
 export type MaterialItem = {
@@ -74,14 +80,22 @@ const emptyOverview: DailyOverview = {
   tomorrow_materials: [],
 };
 
-function normalizeItem(value: unknown, fallbackKind: 'academic' | 'event' | 'study' = 'academic'): FlowItem | null {
+function normalizeItem(value: unknown, fallbackKind: 'academic' | 'event' | 'study' | 'responsibility' = 'academic'): FlowItem | null {
   if (!value || typeof value !== 'object') return null;
   const item = value as Record<string, unknown>;
   const id = typeof item.id === 'string' ? item.id : '';
   const title = typeof item.title === 'string' ? item.title.trim() : '';
   if (!id || !title) return null;
 
-  const kind = item.kind === 'event' ? 'event' : item.kind === 'study' ? 'study' : item.kind === 'academic' ? 'academic' : fallbackKind;
+  const kind = item.kind === 'event'
+    ? 'event'
+    : item.kind === 'study'
+      ? 'study'
+      : item.kind === 'responsibility'
+        ? 'responsibility'
+        : item.kind === 'academic'
+          ? 'academic'
+          : fallbackKind;
   const category = typeof item.category === 'string'
     ? item.category
     : typeof item.type === 'string'
@@ -90,7 +104,9 @@ function normalizeItem(value: unknown, fallbackKind: 'academic' | 'event' | 'stu
         ? 'other'
         : kind === 'study'
           ? 'study'
-          : 'task';
+          : kind === 'responsibility'
+            ? 'family'
+            : 'task';
 
   return {
     kind,
@@ -113,10 +129,13 @@ function normalizeItem(value: unknown, fallbackKind: 'academic' | 'event' | 'stu
     planned_minutes: typeof item.planned_minutes === 'number' ? item.planned_minutes : null,
     objective: typeof item.objective === 'string' ? item.objective : null,
     academic_title: typeof item.academic_title === 'string' ? item.academic_title : null,
+    assigned_member_id: typeof item.assigned_member_id === 'string' ? item.assigned_member_id : null,
+    assigned_name: typeof item.assigned_name === 'string' ? item.assigned_name : null,
+    context_text: typeof item.context_text === 'string' ? item.context_text : null,
   };
 }
 
-function normalizeItems(value: unknown, fallbackKind: 'academic' | 'event' | 'study' = 'academic'): FlowItem[] {
+function normalizeItems(value: unknown, fallbackKind: 'academic' | 'event' | 'study' | 'responsibility' = 'academic'): FlowItem[] {
   if (!Array.isArray(value)) return [];
   return value.map(item => normalizeItem(item, fallbackKind)).filter((item): item is FlowItem => Boolean(item));
 }
@@ -179,6 +198,14 @@ export async function completeStudySession(sessionId: string): Promise<void> {
     p_session_id: sessionId,
   });
   if (error || data !== true) throw new AfterDailyError('save_failed', 'No pudimos completar el momento de estudio.');
+}
+
+export async function respondDailyResponsibility(itemId: string, action: 'accepted' | 'declined' | 'completed'): Promise<void> {
+  const { error } = await supabase.rpc('after_respond_responsibility', {
+    p_responsibility_id: itemId,
+    p_action: action,
+  });
+  if (error) throw new AfterDailyError('save_failed', 'No pudimos actualizar la responsabilidad.');
 }
 
 export async function setMaterialPacked(materialId: string, packed: boolean): Promise<void> {
