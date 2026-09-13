@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Download APK from private release
+      - name: Download verified APK from private release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -24,21 +24,33 @@ jobs:
           test -f Lestra-After-Beta-0.5.3.apk
           sha256sum Lestra-After-Beta-0.5.3.apk
 
-      - name: Create temporary transfer link
+      - name: Upload and resolve public download metadata
         run: |
           set -euo pipefail
           response=$(curl -L --fail --silent --show-error --max-time 600 \
             -F 'file=@Lestra-After-Beta-0.5.3.apk' \
             https://upload.gofile.io/uploadfile)
-          echo "$response"
           status=$(printf '%s' "$response" | jq -r '.status // empty')
           test "$status" = "ok"
           page=$(printf '%s' "$response" | jq -r '.data.downloadPage // empty')
           token=$(printf '%s' "$response" | jq -r '.data.guestToken // empty')
-          file_id=$(printf '%s' "$response" | jq -r '.data.id // empty')
           parent=$(printf '%s' "$response" | jq -r '.data.parentFolder // empty')
+          file_id=$(printf '%s' "$response" | jq -r '.data.id // empty')
+          server=$(printf '%s' "$response" | jq -r '.data.servers[0] // empty')
           test -n "$page"
+          test -n "$token"
+          test -n "$parent"
           echo "GOFILE_PAGE=$page"
-          echo "GOFILE_GUEST_TOKEN=$token"
           echo "GOFILE_FILE_ID=$file_id"
-          echo "GOFILE_PARENT=$parent"
+          echo "GOFILE_SERVER=$server"
+
+          meta=$(curl -L --fail --silent --show-error \
+            -H "Authorization: Bearer $token" \
+            "https://api.gofile.io/contents/$parent")
+          echo "$meta" | jq '{status, data: {id: .data.id, code: .data.code, children: (.data.children // .data.childs // {})}}'
+
+          link=$(printf '%s' "$meta" | jq -r --arg id "$file_id" '
+            [(.data.children // .data.childs // {})[]? | select(.id == $id) | (.link // .downloadLink // .url // empty)][0] // empty')
+          if [ -n "$link" ]; then
+            echo "PUBLIC_FILE_URL=$link"
+          fi
