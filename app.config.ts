@@ -11,7 +11,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: 'Lestra After',
     slug: 'lestra-after',
     scheme: 'lestraafter',
-    version: '0.5.2',
+    version: '0.5.3',
     orientation: 'portrait',
     userInterfaceStyle: 'light',
     newArchEnabled: true,
@@ -21,7 +21,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     android: {
       package: 'app.lestra.after',
-      versionCode: 3,
+      versionCode: 4,
       adaptiveIcon: { backgroundColor: '#FFF8F1' },
     },
     plugins: [
