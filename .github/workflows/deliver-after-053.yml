@@ -17,18 +17,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           gh release download after-beta-0.5.3 \
             --repo djara88/Lestra-after \
             --pattern 'Lestra-After-Beta-0.5.3.apk'
           test -f Lestra-After-Beta-0.5.3.apk
           sha256sum Lestra-After-Beta-0.5.3.apk
 
-      - name: Create temporary transfer link
+      - name: Create one-time transfer link
         run: |
-          curl --fail --silent --show-error \
+          set -euo pipefail
+          response=$(curl --fail --silent --show-error \
             -F 'file=@Lestra-After-Beta-0.5.3.apk' \
-            -F 'secret=' \
-            -F 'expires=3' \
-            https://0x0.st | tee /tmp/apk_url.txt
-          echo
-          echo "APK_TEMP_URL=$(cat /tmp/apk_url.txt)"
+            -F 'expires=1d' \
+            -F 'maxDownloads=1' \
+            -F 'autoDelete=true' \
+            https://file.io/)
+          echo "$response"
+          url=$(printf '%s' "$response" | jq -r '.link // empty')
+          test -n "$url"
+          echo "APK_TEMP_URL=$url"
