@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
-export type AfterGlyphKind='today'|'week'|'school'|'pending'|'family';
+export type AfterGlyphKind='today'|'week'|'school'|'pending'|'family'|'backpack';
 
 type Props={kind:AfterGlyphKind;active?:boolean;size?:number;surface?:boolean};
 
@@ -40,6 +40,14 @@ export function AfterGlyph({kind,active=false,size=28,surface=true}:Props){
         <View style={[s.familyNode,s.familyNodeB,{borderColor:ink}]}/>
         <View style={[s.familyNode,s.familyNodeC,{backgroundColor:accent,borderColor:accent}]}/>
       </>:null}
+      {kind==='backpack'?<>
+        <View style={[s.bagHandle,{borderColor:accent}]}/>
+        <View style={[s.bagBody,{borderColor:ink}]}/>
+        <View style={[s.bagPocket,{borderColor:accent}]}/>
+        <View style={[s.bagStrap,s.bagStrapLeft,{backgroundColor:ink}]}/>
+        <View style={[s.bagStrap,s.bagStrapRight,{backgroundColor:ink}]}/>
+        <View style={[s.bagDot,{backgroundColor:accent}]}/>
+      </>:null}
     </View>
   </View>;
 }
@@ -62,5 +70,10 @@ const s=StyleSheet.create({
   scanLine:{position:'absolute',width:8,height:2,borderRadius:2,left:12,top:13},scanDot:{position:'absolute',width:3.5,height:3.5,borderRadius:2,left:11.3,top:9.3},
   pendingLoop:{position:'absolute',width:15,height:8,borderWidth:2,borderRadius:8},pendingLoopA:{left:4,top:6,transform:[{rotate:'-9deg'}]},pendingLoopB:{left:9,top:14,transform:[{rotate:'9deg'}]},pendingDot:{position:'absolute',width:5,height:5,borderRadius:3,left:4,top:18.5},
   familyLink:{position:'absolute',height:2,borderRadius:2,top:13},familyLinkA:{width:10,left:7,transform:[{rotate:'-26deg'}]},familyLinkB:{width:10,left:12,transform:[{rotate:'26deg'}]},
-  familyNode:{position:'absolute',width:9,height:9,borderRadius:5,borderWidth:2,backgroundColor:'#FFFDF9'},familyNodeA:{left:2,top:4},familyNodeB:{left:17,top:4},familyNodeC:{left:9.5,top:17,borderWidth:0}
+  familyNode:{position:'absolute',width:9,height:9,borderRadius:5,borderWidth:2,backgroundColor:'#FFFDF9'},familyNodeA:{left:2,top:4},familyNodeB:{left:17,top:4},familyNodeC:{left:9.5,top:17,borderWidth:0},
+  bagHandle:{position:'absolute',width:10,height:7,left:9,top:2,borderWidth:2,borderBottomWidth:0,borderTopLeftRadius:6,borderTopRightRadius:6},
+  bagBody:{position:'absolute',width:18,height:18,left:5,top:7,borderWidth:2,borderRadius:6,backgroundColor:'#FFFDF9'},
+  bagPocket:{position:'absolute',width:10,height:6,left:9,top:15,borderWidth:1.8,borderRadius:3},
+  bagStrap:{position:'absolute',width:2,height:10,top:9,borderRadius:2},bagStrapLeft:{left:2.5,transform:[{rotate:'7deg'}]},bagStrapRight:{right:2.5,transform:[{rotate:'-7deg'}]},
+  bagDot:{position:'absolute',width:3.5,height:3.5,borderRadius:2,left:12.25,top:10.5}
 });
