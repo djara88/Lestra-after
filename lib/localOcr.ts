@@ -46,6 +46,16 @@ const MONTHS: Record<string, number> = {
   noviembre: 10, diciembre: 11,
 };
 
+const WEEKDAYS: Record<string, number> = {
+  domingo: 0,
+  lunes: 1,
+  martes: 2,
+  miercoles: 3,
+  jueves: 4,
+  viernes: 5,
+  sabado: 6,
+};
+
 const SUBJECTS: Array<[RegExp, string]> = [
   [/matem[aá]tic/i, 'Matemática'], [/lenguaje|lengua y literatura/i, 'Lenguaje'],
   [/ciencias? naturales|ciencias?/i, 'Ciencias'], [/historia|geograf/i, 'Historia'],
@@ -64,6 +74,8 @@ const EVENT_KEYWORDS: Array<[RegExp, string]> = [
   [/\b(reuni[oó]n|citaci[oó]n|entrevista)\b/i, 'school'], [/\b(salida pedag[oó]gica|paseo|visita)\b/i, 'school'],
   [/\b(entrenamiento|partido|taller deportivo)\b/i, 'sport'], [/\b(dentista|m[eé]dico|control de salud)\b/i, 'health'],
 ];
+
+type DateHint = { month?: number; year?: number };
 
 function stripAccents(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -91,47 +103,110 @@ function nextWeekday(target: number) {
   if (diff <= 0) diff += 7;
   const result = new Date(now);
   result.setDate(result.getDate() + diff);
+  result.setHours(18, 0, 0, 0);
   return result;
 }
 
-function dateFromText(text: string): Date | null {
-  const numeric = text.match(/\b([0-3]?\d)[\/\-.]([01]?\d)(?:[\/\-.](20\d{2}|\d{2}))?\b/);
+function documentDateHint(text: string): DateHint {
+  const normalized = stripAccents(text.toLowerCase());
+  const monthMatch = normalized.match(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\b/);
+  const yearMatch = normalized.match(/\b(20\d{2})\b/);
+  return {
+    month: monthMatch?.[1] ? MONTHS[monthMatch[1]] : undefined,
+    year: yearMatch?.[1] ? Number(yearMatch[1]) : undefined,
+  };
+}
+
+function normalizeYear(value: string | undefined, fallback: number) {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  return parsed < 100 ? parsed + 2000 : parsed;
+}
+
+function validDate(year: number, month: number, day: number) {
+  const date = new Date(year, month, day, 18, 0, 0, 0);
+  if (Number.isNaN(date.getTime()) || date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
+  return date;
+}
+
+function rollForwardIfYearMissing(date: Date, explicitYear: boolean) {
+  if (!explicitYear && date.getTime() < Date.now() - 86_400_000) date.setFullYear(date.getFullYear() + 1);
+  return date;
+}
+
+function dateFromText(text: string, hint: DateHint = {}): Date | null {
+  const normalized = stripAccents(text.toLowerCase());
+  const fallbackYear = hint.year ?? new Date().getFullYear();
+
+  const numeric = normalized.match(/\b([0-3]?\d)[\/\-.]([01]?\d)(?:[\/\-.](20\d{2}|\d{2}))?\b/);
   if (numeric?.[1] && numeric[2]) {
     const day = Number(numeric[1]);
     const month = Number(numeric[2]) - 1;
-    let year = numeric[3] ? Number(numeric[3]) : new Date().getFullYear();
-    if (year < 100) year += 2000;
-    const date = new Date(year, month, day, 18, 0, 0, 0);
-    if (!Number.isNaN(date.getTime()) && date.getDate() === day && date.getMonth() === month) {
-      if (!numeric[3] && date.getTime() < Date.now() - 86_400_000) date.setFullYear(date.getFullYear() + 1);
-      return date;
-    }
+    const year = normalizeYear(numeric[3], fallbackYear);
+    const date = validDate(year, month, day);
+    if (date) return rollForwardIfYearMissing(date, Boolean(numeric[3] || hint.year));
   }
 
-  const named = stripAccents(text.toLowerCase()).match(/\b([0-3]?\d)\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)(?:\s+de\s+(20\d{2}))?/);
+  const named = normalized.match(/\b([0-3]?\d)\s+(?:de\s+)?(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)(?:\s+(?:de\s+)?(20\d{2}))?\b/);
   if (named?.[1] && named[2]) {
     const day = Number(named[1]);
     const month = MONTHS[named[2]];
+    const year = normalizeYear(named[3], fallbackYear);
     if (month !== undefined) {
-      const year = named[3] ? Number(named[3]) : new Date().getFullYear();
-      const date = new Date(year, month, day, 18, 0, 0, 0);
-      if (!named[3] && date.getTime() < Date.now() - 86_400_000) date.setFullYear(date.getFullYear() + 1);
-      return date;
+      const date = validDate(year, month, day);
+      if (date) return rollForwardIfYearMissing(date, Boolean(named[3] || hint.year));
     }
   }
 
-  const normalized = stripAccents(text.toLowerCase());
-  const weekdays: Array<[string, number]> = [
-    ['domingo', 0], ['lunes', 1], ['martes', 2], ['miercoles', 3], ['jueves', 4], ['viernes', 5], ['sabado', 6],
-  ];
-  for (const [word, day] of weekdays) if (new RegExp(`\\b${word}\\b`).test(normalized)) return nextWeekday(day);
-  if (/\bma[nñ]ana\b/i.test(text)) {
+  const weekdayDay = normalized.match(/\b(domingo|lunes|martes|miercoles|jueves|viernes|sabado)\s+([0-3]?\d)(?:\s+(?:de\s+)?(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre))?(?:\s+(?:de\s+)?(20\d{2}))?\b/);
+  if (weekdayDay?.[1] && weekdayDay[2]) {
+    const day = Number(weekdayDay[2]);
+    const month = weekdayDay[3] ? MONTHS[weekdayDay[3]] : hint.month;
+    const year = normalizeYear(weekdayDay[4], fallbackYear);
+    if (month !== undefined) {
+      const date = validDate(year, month, day);
+      if (date) return rollForwardIfYearMissing(date, Boolean(weekdayDay[4] || hint.year));
+    }
+  }
+
+  const labelledDay = normalized.match(/\b(?:fecha|dia|entrega|vence)\s*[:\-]?\s*([0-3]?\d)\b/);
+  if (labelledDay?.[1] && hint.month !== undefined) {
+    const day = Number(labelledDay[1]);
+    const date = validDate(fallbackYear, hint.month, day);
+    if (date) return rollForwardIfYearMissing(date, Boolean(hint.year));
+  }
+
+  for (const [word, day] of Object.entries(WEEKDAYS)) {
+    if (new RegExp(`\\b${word}\\b`).test(normalized)) return nextWeekday(day);
+  }
+
+  if (/\bmanana\b/.test(normalized)) {
     const date = new Date();
     date.setDate(date.getDate() + 1);
     date.setHours(18, 0, 0, 0);
     return date;
   }
   return null;
+}
+
+function hasActionKeyword(line: string) {
+  return ACADEMIC_KEYWORDS.some(([pattern]) => pattern.test(line)) || EVENT_KEYWORDS.some(([pattern]) => pattern.test(line));
+}
+
+function isDateAnchorLine(line: string, hint: DateHint) {
+  if (!dateFromText(line, hint)) return false;
+  const normalized = stripAccents(line.toLowerCase()).trim();
+  if (/^(fecha|dia|entrega|vence|para)\b/.test(normalized)) return true;
+  if (/^(domingo|lunes|martes|miercoles|jueves|viernes|sabado)\b/.test(normalized)) return true;
+  if (/^\s*[0-3]?\d[\/\-.][01]?\d/.test(normalized)) return true;
+  if (/^\s*[0-3]?\d\s+(?:de\s+)?(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\b/.test(normalized)) return true;
+  return line.length <= 28 && !hasActionKeyword(line);
+}
+
+function isDateDetailLine(line: string | undefined, hint: DateHint) {
+  if (!line || !dateFromText(line, hint)) return false;
+  const normalized = stripAccents(line.toLowerCase()).trim();
+  return /^(fecha|dia|entrega|vence|para)\b/.test(normalized) || line.length <= 24;
 }
 
 function timeFromText(text: string) {
@@ -142,9 +217,10 @@ function timeFromText(text: string) {
 
 function applyTime(date: Date | null, text: string) {
   if (!date) return null;
+  const resolved = new Date(date.getTime());
   const time = timeFromText(text);
-  if (time) date.setHours(time.hour, time.minute, 0, 0);
-  return date.toISOString();
+  if (time) resolved.setHours(time.hour, time.minute, 0, 0);
+  return resolved.toISOString();
 }
 
 function materialsFromText(text: string) {
@@ -165,16 +241,30 @@ export function parseSchoolText(rawText: string): LocalCandidate[] {
   const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
   const candidates: LocalCandidate[] = [];
   const seen = new Set<string>();
+  const hint = documentDateHint(text);
+  let activeDate: Date | null = null;
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     if (!line) continue;
 
-    const context = [lines[index - 1], line, lines[index + 1]]
+    const previous = lines[index - 1];
+    const next = lines[index + 1];
+    const lineDate = dateFromText(line, hint);
+    if (lineDate && isDateAnchorLine(line, hint)) activeDate = lineDate;
+
+    const previousDate = isDateDetailLine(previous, hint) ? dateFromText(previous as string, hint) : null;
+    const nextDate = isDateDetailLine(next, hint) ? dateFromText(next as string, hint) : null;
+    const resolvedDate = lineDate ?? previousDate ?? activeDate ?? nextDate;
+    const timingContext = [previousDate ? previous : null, line, !activeDate && nextDate ? next : null]
+      .filter((value): value is string => Boolean(value))
+      .join(' · ');
+
+    const context = [previous, line, next]
       .filter((value): value is string => Boolean(value))
       .join(' · ');
     const subject = subjectFromText(context) ?? subjectFromText(text);
-    const when = applyTime(dateFromText(context) ?? dateFromText(text), context);
+    const when = applyTime(resolvedDate, timingContext);
     const materials = materialsFromText(context);
 
     let academicType: string | null = null;
@@ -230,8 +320,8 @@ export function parseSchoolText(rawText: string): LocalCandidate[] {
     }
   }
 
-  // Importante: texto legible sin candidatos es un estado válido y distinto de OCR vacío.
-  // No fabricamos una "note" para ocultar que el parser no encontró una acción explícita.
+  // Texto legible sin candidatos es un estado válido y distinto de OCR vacío.
+  // No fabricamos una nota ni una fecha global para ocultar ambigüedad del documento.
   return candidates.slice(0, 20);
 }
 
