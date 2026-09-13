@@ -8,6 +8,7 @@ ANDROID_DIR="$CACHE_DIR/android-sdk"
 mkdir -p "$CACHE_DIR" "$ANDROID_DIR/cmdline-tools"
 
 export CI=1
+export NODE_ENV=production
 export JAVA_HOME="$JDK_DIR"
 export ANDROID_HOME="$ANDROID_DIR"
 export ANDROID_SDK_ROOT="$ANDROID_DIR"
@@ -45,8 +46,10 @@ yes | sdkmanager --sdk_root="$ANDROID_DIR" --licenses >/dev/null
 set -o pipefail
 sdkmanager --sdk_root="$ANDROID_DIR" \
   "platform-tools" \
-  "platforms;android-35" \
-  "build-tools;35.0.0"
+  "platforms;android-36" \
+  "build-tools;36.0.0" \
+  "ndk;27.1.12297006" \
+  "cmake;3.22.1"
 
 npm install --ignore-scripts --no-fund
 npm run typecheck
@@ -56,7 +59,9 @@ npx expo prebuild --platform android --clean --no-install
 cd android
 chmod +x gradlew
 ./gradlew assembleRelease --no-daemon \
-  -Dorg.gradle.jvmargs="-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8"
+  -PreactNativeArchitectures=arm64-v8a \
+  -Dorg.gradle.workers.max=1 \
+  -Dorg.gradle.jvmargs="-Xmx640m -XX:MaxMetaspaceSize=320m -Dfile.encoding=UTF-8"
 cd "$ROOT"
 
 test -f android/app/build/outputs/apk/release/app-release.apk
