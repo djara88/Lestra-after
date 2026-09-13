@@ -29,6 +29,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Validate Google Sign-In configuration
+        run: |
+          if [ -z "$EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID" ]; then
+            echo "::error::Missing repository secret EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID"
+            exit 1
+          fi
+          case "$EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID" in
+            *.apps.googleusercontent.com) ;;
+            *) echo "::error::EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not a valid Google OAuth Web Client ID"; exit 1 ;;
+          esac
       - run: npm install --ignore-scripts --no-fund
       - run: npm run typecheck
       - name: Validate Expo dependency compatibility
