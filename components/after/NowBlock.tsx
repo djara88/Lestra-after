@@ -21,14 +21,27 @@ type Props = {
   onImportSchool: () => void;
 };
 
-function ItemLine({ item, prefix, childName, showChild }: { item: FlowItem; prefix: string; childName: Props['childName']; showChild: boolean }) {
+function ItemLine({
+  item,
+  prefix,
+  childName,
+  showChild,
+  tone = 'light',
+}: {
+  item: FlowItem;
+  prefix: string;
+  childName: Props['childName'];
+  showChild: boolean;
+  tone?: 'light' | 'dark';
+}) {
   const time = timeLabel(item.starts_at);
+  const dark = tone === 'dark';
   return (
     <View style={s.line}>
-      <Text style={s.linePrefix}>{prefix}</Text>
+      <Text style={[s.linePrefix, dark && s.linePrefixDark]}>{prefix}</Text>
       <View style={s.lineBody}>
-        <Text style={s.lineTitle}>{item.title}</Text>
-        <Text style={s.lineMeta}>
+        <Text style={[s.lineTitle, dark && s.lineTitleDark]}>{item.title}</Text>
+        <Text style={[s.lineMeta, dark && s.lineMetaDark]}>
           {time || 'Sin hora'} · {labels[item.category] || item.category}{showChild ? ` · ${childName(item.student_id)}` : ''}
         </Text>
       </View>
@@ -54,7 +67,7 @@ export function NowBlock({ current, next, childName, showChild, onImportSchool }
       {next ? (
         <View style={s.nextWrap}>
           <Text style={s.kickerDark}>DESPUÉS</Text>
-          <ItemLine item={next} prefix="Sigue" childName={childName} showChild={showChild} />
+          <ItemLine item={next} prefix="Sigue" childName={childName} showChild={showChild} tone="dark" />
         </View>
       ) : null}
 
@@ -79,10 +92,13 @@ const s = StyleSheet.create({
   quietCopy: { fontSize: 13, lineHeight: 19, color: '#FFF2E9' },
   nextWrap: { marginTop: 2, backgroundColor: '#FFD9C3', borderRadius: 18, padding: 13 },
   line: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  linePrefix: { fontSize: 11, fontWeight: '900', color: '#7A3F25', minWidth: 48, paddingTop: 3 },
+  linePrefix: { fontSize: 11, fontWeight: '900', color: '#FFE8DA', minWidth: 48, paddingTop: 3 },
+  linePrefixDark: { color: '#7A3F25' },
   lineBody: { flex: 1 },
   lineTitle: { fontSize: 20, lineHeight: 25, fontWeight: '900', color: '#FFFFFF' },
+  lineTitleDark: { color: '#4D3022' },
   lineMeta: { fontSize: 12.5, lineHeight: 18, color: '#FFF2E9', marginTop: 3 },
+  lineMetaDark: { color: '#75513F' },
   action: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', backgroundColor: '#FFF8F1', borderRadius: 13, paddingHorizontal: 14 },
   actionText: { fontSize: 13, fontWeight: '900', color: '#A6532D' },
 });
