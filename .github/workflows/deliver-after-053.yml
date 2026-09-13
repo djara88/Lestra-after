@@ -11,7 +11,7 @@ permissions:
 jobs:
   deliver:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Download verified APK from private release
         env:
@@ -22,56 +22,12 @@ jobs:
             --repo djara88/Lestra-after \
             --pattern 'Lestra-After-Beta-0.5.3.apk'
           test -f Lestra-After-Beta-0.5.3.apk
-          sha256sum Lestra-After-Beta-0.5.3.apk
+          echo '59e8fc4fec54c291c0f491fe95c09030797d0516e2627cfbe1e3d5dea087004a  Lestra-After-Beta-0.5.3.apk' | sha256sum -c -
 
-      - name: Upload and verify direct download
-        run: |
-          set -euo pipefail
-          expected='59e8fc4fec54c291c0f491fe95c09030797d0516e2627cfbe1e3d5dea087004a'
-          response=$(curl -L --fail --silent --show-error --max-time 600 \
-            -F 'file=@Lestra-After-Beta-0.5.3.apk' \
-            https://upload.gofile.io/uploadfile)
-          status=$(printf '%s' "$response" | jq -r '.status // empty')
-          test "$status" = 'ok'
-          token=$(printf '%s' "$response" | jq -r '.data.guestToken // empty')
-          file_id=$(printf '%s' "$response" | jq -r '.data.id // empty')
-          server=$(printf '%s' "$response" | jq -r '.data.servers[0] // empty')
-          page=$(printf '%s' "$response" | jq -r '.data.downloadPage // empty')
-          raw="https://${server}.gofile.io/download/web/${file_id}/Lestra-After-Beta-0.5.3.apk"
-          echo "GOFILE_PAGE=$page"
-          echo "RAW_CANDIDATE=$raw"
-
-          set +e
-          curl -L --silent --show-error --max-time 600 -o /tmp/noauth.apk "$raw"
-          noauth_rc=$?
-          noauth_hash=$(sha256sum /tmp/noauth.apk 2>/dev/null | awk '{print $1}')
-          echo "NOAUTH_RC=$noauth_rc"
-          echo "NOAUTH_HASH=$noauth_hash"
-
-          curl -L --silent --show-error --max-time 600 -H "Cookie: accountToken=$token" -o /tmp/cookie.apk "$raw"
-          cookie_rc=$?
-          cookie_hash=$(sha256sum /tmp/cookie.apk 2>/dev/null | awk '{print $1}')
-          echo "COOKIE_RC=$cookie_rc"
-          echo "COOKIE_HASH=$cookie_hash"
-
-          curl -L --silent --show-error --max-time 600 -o /tmp/query.apk "${raw}?token=${token}"
-          query_rc=$?
-          query_hash=$(sha256sum /tmp/query.apk 2>/dev/null | awk '{print $1}')
-          echo "QUERY_RC=$query_rc"
-          echo "QUERY_HASH=$query_hash"
-          set -e
-
-          if [ "$noauth_hash" = "$expected" ]; then
-            echo "PUBLIC_RAW_URL=$raw"
-            exit 0
-          fi
-          if [ "$query_hash" = "$expected" ]; then
-            echo "PUBLIC_RAW_URL=${raw}?token=${token}"
-            exit 0
-          fi
-          if [ "$cookie_hash" = "$expected" ]; then
-            echo "COOKIE_ONLY_RAW_URL=$raw"
-            exit 0
-          fi
-          echo 'No direct mode reproduced the APK hash.'
-          exit 1
+      - name: Upload APK for ChatGPT handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: lestra-after-beta-0.5.3
+          path: Lestra-After-Beta-0.5.3.apk
+          retention-days: 1
+          compression-level: 0
