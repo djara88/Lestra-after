@@ -1,7 +1,15 @@
 import { supabase } from '@/lib/supabase';
 
 export type FamilyMember = { id: string; display_name: string; role: string; is_me: boolean };
-export type FamilyStudent = { id: string; name: string; first_name?: string | null; preferred_name?: string | null };
+export type FamilyStudent = {
+  id: string;
+  name: string;
+  first_name?: string | null;
+  preferred_name?: string | null;
+  relationship_label?: string | null;
+  school_name?: string | null;
+  grade_level?: string | null;
+};
 export type Responsibility = {
   id: string;
   family_id?: string;
@@ -12,6 +20,7 @@ export type Responsibility = {
   status: string;
   due_at?: string | null;
   context_text?: string | null;
+  created_at?: string | null;
 };
 export type FamilyWorkspace = {
   family_id?: string;
