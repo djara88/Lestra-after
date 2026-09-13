@@ -14,7 +14,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     version: '0.5.5',
     orientation: 'portrait',
     userInterfaceStyle: 'light',
-    newArchEnabled: true,
+    // Emergency Render build path: classic architecture avoids the heavy
+    // C++ new-architecture compile that exceeded the free builder resources.
+    // Product branch remains unchanged.
+    newArchEnabled: false,
     ios: {
       supportsTablet: false,
       bundleIdentifier: 'app.lestra.after',
