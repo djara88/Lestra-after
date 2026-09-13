@@ -256,11 +256,11 @@ export default function Today() {
             </View>
 
             <View style={s.actionRow}>
-              <Pressable accessibilityRole="button" onPress={() => router.push('/(app)/agregar')} style={s.quickAction}>
+              <Pressable accessibilityRole="button" onPress={() => router.push('/(app)/composer')} style={s.quickAction}>
                 <Text style={s.quickEmoji}>＋</Text>
                 <View style={s.rowContent}>
                   <Text style={s.quickTitle}>Agregar algo</Text>
-                  <Text style={s.quickCopy}>Foto, PDF o actividad manual.</Text>
+                  <Text style={s.quickCopy}>Actividad, tarea o prueba en pocos pasos.</Text>
                 </View>
               </Pressable>
               <Pressable accessibilityRole="button" onPress={() => router.push('/(app)/estudio')} style={s.quickAction}>
