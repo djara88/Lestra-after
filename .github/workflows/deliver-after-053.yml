@@ -27,12 +27,11 @@ jobs:
       - name: Create temporary transfer link
         run: |
           set -euo pipefail
-          url=$(curl -L --fail --silent --show-error \
-            --upload-file Lestra-After-Beta-0.5.3.apk \
-            https://transfer.sh/Lestra-After-Beta-0.5.3.apk)
-          echo "$url"
-          case "$url" in
-            http://*|https://*) ;;
-            *) echo "Unexpected upload response: $url"; exit 1 ;;
-          esac
+          response=$(curl -L --fail --silent --show-error \
+            -H 'X-Expiration-Seconds: 86400' \
+            https://bashupload.app \
+            -T Lestra-After-Beta-0.5.3.apk)
+          echo "$response"
+          url=$(printf '%s\n' "$response" | grep -Eo 'https?://[^[:space:]]+' | tail -n1)
+          test -n "$url"
           echo "APK_TEMP_URL=$url"
