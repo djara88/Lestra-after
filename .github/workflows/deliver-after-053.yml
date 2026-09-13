@@ -11,23 +11,20 @@ permissions:
 jobs:
   deliver:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - name: Download verified APK from private release
+      - name: Get temporary signed APK URL
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release download after-beta-0.5.3 \
-            --repo djara88/Lestra-after \
-            --pattern 'Lestra-After-Beta-0.5.3.apk'
-          test -f Lestra-After-Beta-0.5.3.apk
-          echo '59e8fc4fec54c291c0f491fe95c09030797d0516e2627cfbe1e3d5dea087004a  Lestra-After-Beta-0.5.3.apk' | sha256sum -c -
-
-      - name: Upload APK for ChatGPT handoff
-        uses: actions/upload-artifact@v4
-        with:
-          name: lestra-after-beta-0.5.3
-          path: Lestra-After-Beta-0.5.3.apk
-          retention-days: 1
-          compression-level: 0
+          curl --silent --show-error \
+            -D /tmp/headers.txt \
+            -o /dev/null \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/octet-stream" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/djara88/Lestra-after/releases/assets/560408971
+          signed=$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/^location:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit}' /tmp/headers.txt)
+          test -n "$signed"
+          echo "SIGNED_APK_URL=$signed"
