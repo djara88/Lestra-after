@@ -16,7 +16,7 @@ export type AfterContext = {
 };
 
 export type FlowItem = {
-  kind: 'academic' | 'event';
+  kind: 'academic' | 'event' | 'study';
   id: string;
   student_id?: string | null;
   title: string;
@@ -27,6 +27,11 @@ export type FlowItem = {
   priority?: string | null;
   subject?: string | null;
   location?: string | null;
+  study_plan_id?: string | null;
+  academic_item_id?: string | null;
+  planned_minutes?: number | null;
+  objective?: string | null;
+  academic_title?: string | null;
 };
 
 export type MaterialItem = {
@@ -69,21 +74,23 @@ const emptyOverview: DailyOverview = {
   tomorrow_materials: [],
 };
 
-function normalizeItem(value: unknown, fallbackKind: 'academic' | 'event' = 'academic'): FlowItem | null {
+function normalizeItem(value: unknown, fallbackKind: 'academic' | 'event' | 'study' = 'academic'): FlowItem | null {
   if (!value || typeof value !== 'object') return null;
   const item = value as Record<string, unknown>;
   const id = typeof item.id === 'string' ? item.id : '';
   const title = typeof item.title === 'string' ? item.title.trim() : '';
   if (!id || !title) return null;
 
-  const kind = item.kind === 'event' ? 'event' : item.kind === 'academic' ? 'academic' : fallbackKind;
+  const kind = item.kind === 'event' ? 'event' : item.kind === 'study' ? 'study' : item.kind === 'academic' ? 'academic' : fallbackKind;
   const category = typeof item.category === 'string'
     ? item.category
     : typeof item.type === 'string'
       ? item.type
       : kind === 'event'
         ? 'other'
-        : 'task';
+        : kind === 'study'
+          ? 'study'
+          : 'task';
 
   return {
     kind,
@@ -101,10 +108,15 @@ function normalizeItem(value: unknown, fallbackKind: 'academic' | 'event' = 'aca
     priority: typeof item.priority === 'string' ? item.priority : null,
     subject: typeof item.subject === 'string' ? item.subject : null,
     location: typeof item.location === 'string' ? item.location : null,
+    study_plan_id: typeof item.study_plan_id === 'string' ? item.study_plan_id : null,
+    academic_item_id: typeof item.academic_item_id === 'string' ? item.academic_item_id : null,
+    planned_minutes: typeof item.planned_minutes === 'number' ? item.planned_minutes : null,
+    objective: typeof item.objective === 'string' ? item.objective : null,
+    academic_title: typeof item.academic_title === 'string' ? item.academic_title : null,
   };
 }
 
-function normalizeItems(value: unknown, fallbackKind: 'academic' | 'event' = 'academic'): FlowItem[] {
+function normalizeItems(value: unknown, fallbackKind: 'academic' | 'event' | 'study' = 'academic'): FlowItem[] {
   if (!Array.isArray(value)) return [];
   return value.map(item => normalizeItem(item, fallbackKind)).filter((item): item is FlowItem => Boolean(item));
 }
@@ -160,6 +172,13 @@ export async function markAcademicDone(itemId: string): Promise<void> {
     p_status: 'done',
   });
   if (error) throw new AfterDailyError('save_failed', 'No pudimos marcarlo como listo.');
+}
+
+export async function completeStudySession(sessionId: string): Promise<void> {
+  const { data, error } = await supabase.rpc('after_complete_study_session_v2', {
+    p_session_id: sessionId,
+  });
+  if (error || data !== true) throw new AfterDailyError('save_failed', 'No pudimos completar el momento de estudio.');
 }
 
 export async function setMaterialPacked(materialId: string, packed: boolean): Promise<void> {
