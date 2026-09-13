@@ -48,13 +48,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.3.apk
-          if gh release view after-beta-0.5.3 >/dev/null 2>&1; then
-            gh release upload after-beta-0.5.3 Lestra-After-Beta-0.5.3.apk --clobber
+          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.4.apk
+          if gh release view after-beta-0.5.4 >/dev/null 2>&1; then
+            gh release upload after-beta-0.5.4 Lestra-After-Beta-0.5.4.apk --clobber
           else
-            gh release create after-beta-0.5.3 Lestra-After-Beta-0.5.3.apk \
-              --title "Lestra After Beta 0.5.3" \
-              --notes "Corrección de autenticación Android: vuelve al flujo OAuth de Supabase con navegador seguro y deep link de retorno a la app. No depende del certificado SHA-1 del APK. Mantiene el rediseño de After sin cambios funcionales adicionales." \
+            gh release create after-beta-0.5.4 Lestra-After-Beta-0.5.4.apk \
+              --title "Lestra After Beta 0.5.4" \
+              --notes "Nueva rutina Mochila: horario escolar semanal por hijo, materiales habituales por asignatura, checklist diario persistente y combinación automática con materiales especiales de tareas y pruebas. Incluye además las mejoras anteriores de Today Flow, OCR, estudio y coordinación familiar." \
               --prerelease \
               --target "$GITHUB_SHA"
           fi
