@@ -380,7 +380,7 @@ as $$
     where e.status='scheduled' and e.student_id is not null
       and e.starts_at>=date_trunc('day',now())
       and e.starts_at<date_trunc('day',now())+make_interval(days=>greatest(1,least(coalesce(p_days,14),60)))
-  ), overlaps as (
+  ), overlapping_events as (
     select
       'overlap'::text conflict_type,a.student_id,a.id first_id,b.id second_id,
       a.title first_title,b.title second_title,b.starts_at conflict_at,
@@ -404,7 +404,7 @@ as $$
     'type',x.conflict_type,'student_id',x.student_id,'first_id',x.first_id,'second_id',x.second_id,
     'first_title',x.first_title,'second_title',x.second_title,'conflict_at',x.conflict_at,'message',x.message
   ) order by x.conflict_at),'[]'::jsonb)
-  from (select * from overlaps union all select * from travel) x;
+  from (select * from overlapping_events union all select * from travel) x;
 $$;
 
 create or replace function public.after_agenda(p_days integer default 30)
