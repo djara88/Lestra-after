@@ -16,7 +16,7 @@ jobs:
     env:
       EXPO_PUBLIC_SUPABASE_URL: https://yihcktculicmuuzzxzik.supabase.co
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ZpxmCzRu3-CQ8LIUXhdZtA_lOhk_wzU
-      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 1017541924770-8v7k9m0mj56mj03cr7r11hdoec9b5cdp.apps.googleusercontent.com
       EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID }}
       EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME: ${{ secrets.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME }}
     steps:
@@ -32,7 +32,7 @@ jobs:
       - name: Validate Google Sign-In configuration
         run: |
           if [ -z "$EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID" ]; then
-            echo "::error::Missing repository secret EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID"
+            echo "::error::Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID"
             exit 1
           fi
           case "$EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID" in
@@ -54,17 +54,19 @@ jobs:
         run: |
           test -f android/app/build/outputs/apk/release/app-release.apk
           unzip -l android/app/build/outputs/apk/release/app-release.apk | grep -E 'assets/index.android.bundle|assets/.*\.bundle' >/dev/null
+      - name: Print Android signing certificate SHA-1
+        run: keytool -printcert -jarfile android/app/build/outputs/apk/release/app-release.apk | grep -E 'SHA1:' || true
       - name: Publish beta APK as GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.1.apk
-          if gh release view after-beta-0.5.1 >/dev/null 2>&1; then
-            gh release upload after-beta-0.5.1 Lestra-After-Beta-0.5.1.apk --clobber
+          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.2.apk
+          if gh release view after-beta-0.5.2 >/dev/null 2>&1; then
+            gh release upload after-beta-0.5.2 Lestra-After-Beta-0.5.2.apk --clobber
           else
-            gh release create after-beta-0.5.1 Lestra-After-Beta-0.5.1.apk \
-              --title "Lestra After Beta 0.5.1" \
-              --notes "Corrección Android: restaura el inicio de sesión nativo con Google y mantiene el rediseño responsive e iconografía propia de After." \
+            gh release create after-beta-0.5.2 Lestra-After-Beta-0.5.2.apk \
+              --title "Lestra After Beta 0.5.2" \
+              --notes "Corrección Android: incluye el Google Web Client ID requerido por el inicio de sesión nativo y mantiene el rediseño responsive de After." \
               --prerelease \
               --target "$GITHUB_SHA"
           fi
