@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -56,6 +56,7 @@ type LoadState = 'loading' | 'ready' | 'error';
 
 export default function Today() {
   const [flow, setFlow] = useState<DailyFlow | null>(null);
+  const flowRef = useRef<DailyFlow | null>(null);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [refreshing, setRefreshing] = useState(false);
   const [stale, setStale] = useState(false);
@@ -64,16 +65,17 @@ export default function Today() {
 
   const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     if (mode === 'refresh') setRefreshing(true);
-    else if (!flow) setLoadState('loading');
+    else if (!flowRef.current) setLoadState('loading');
 
     try {
       const next = await getTodayFlow();
+      flowRef.current = next;
       setFlow(next);
       setLoadState('ready');
       setStale(false);
       setChildId(current => current === 'all' || next.context.students?.some(child => child.id === current) ? current : 'all');
     } catch {
-      if (flow) {
+      if (flowRef.current) {
         setStale(true);
         setLoadState('ready');
       } else {
@@ -82,7 +84,7 @@ export default function Today() {
     } finally {
       setRefreshing(false);
     }
-  }, [flow]);
+  }, []);
 
   useFocusEffect(useCallback(() => {
     void load('initial');
