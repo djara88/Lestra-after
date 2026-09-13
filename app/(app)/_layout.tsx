@@ -21,6 +21,8 @@ export default function AppLayout(){
     <Tabs.Screen name="pendientes" options={{title:'Pendientes',tabBarIcon:({focused})=><TabGlyph active={focused} kind="pending"/>}}/>
     <Tabs.Screen name="familia" options={{title:'Familia',tabBarIcon:({focused})=><TabGlyph active={focused} kind="family"/>}}/>
     <Tabs.Screen name="estudio" options={{href:null}}/>
+    <Tabs.Screen name="composer" options={{href:null}}/>
+    <Tabs.Screen name="editar" options={{href:null}}/>
   </Tabs>;
 }
 
