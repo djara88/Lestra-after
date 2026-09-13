@@ -4,6 +4,7 @@ export type BackpackStudent = {
   id: string;
   first_name: string;
   preferred_name?: string | null;
+  relationship_label?: string | null;
   school_name?: string | null;
   grade_level?: string | null;
 };
@@ -62,6 +63,13 @@ export class BackpackError extends Error {
     super(message);
     this.name = 'BackpackError';
   }
+}
+
+export async function getBackpackStudents(): Promise<BackpackStudent[]> {
+  const { data, error } = await supabase.rpc('after_my_context');
+  if (error) throw new BackpackError('No pudimos cargar a tu familia.');
+  const context = (data ?? {}) as { students?: BackpackStudent[] };
+  return Array.isArray(context.students) ? context.students : [];
 }
 
 export async function getBackpackWorkspace(studentId: string, targetDate?: string | null): Promise<BackpackWorkspace> {
@@ -129,7 +137,7 @@ export async function toggleBackpackItem(studentId: string, targetDate: string, 
 }
 
 export function weekdayLabel(day: number) {
-  return ['','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'][day] || 'Día';
+  return ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][day] || 'Día';
 }
 
 export function shortTime(value?: string | null) {
