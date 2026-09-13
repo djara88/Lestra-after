@@ -11,7 +11,7 @@ permissions:
 jobs:
   deliver:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Download APK from private release
         env:
@@ -23,16 +23,22 @@ jobs:
             --pattern 'Lestra-After-Beta-0.5.3.apk'
           test -f Lestra-After-Beta-0.5.3.apk
           sha256sum Lestra-After-Beta-0.5.3.apk
-          zip -0 Lestra-After-Beta-0.5.3.zip Lestra-After-Beta-0.5.3.apk
-          test -f Lestra-After-Beta-0.5.3.zip
 
       - name: Create temporary transfer link
         run: |
           set -euo pipefail
-          response=$(curl -L --fail --silent --show-error --max-time 300 \
-            -F 'files[]=@Lestra-After-Beta-0.5.3.zip' \
-            https://uguu.se/upload)
+          response=$(curl -L --fail --silent --show-error --max-time 600 \
+            -F 'file=@Lestra-After-Beta-0.5.3.apk' \
+            https://upload.gofile.io/uploadfile)
           echo "$response"
-          url=$(printf '%s' "$response" | jq -r '.files[0].url // empty')
-          test -n "$url"
-          echo "APK_TEMP_URL=$url"
+          status=$(printf '%s' "$response" | jq -r '.status // empty')
+          test "$status" = "ok"
+          page=$(printf '%s' "$response" | jq -r '.data.downloadPage // empty')
+          token=$(printf '%s' "$response" | jq -r '.data.guestToken // empty')
+          file_id=$(printf '%s' "$response" | jq -r '.data.id // empty')
+          parent=$(printf '%s' "$response" | jq -r '.data.parentFolder // empty')
+          test -n "$page"
+          echo "GOFILE_PAGE=$page"
+          echo "GOFILE_GUEST_TOKEN=$token"
+          echo "GOFILE_FILE_ID=$file_id"
+          echo "GOFILE_PARENT=$parent"
