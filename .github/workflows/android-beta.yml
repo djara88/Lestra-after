@@ -29,16 +29,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Validate Google Sign-In configuration
-        run: |
-          if [ -z "$EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID" ]; then
-            echo "::error::Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID"
-            exit 1
-          fi
-          case "$EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID" in
-            *.apps.googleusercontent.com) ;;
-            *) echo "::error::EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not a valid Google OAuth Web Client ID"; exit 1 ;;
-          esac
       - run: npm install --ignore-scripts --no-fund
       - run: npm run typecheck
       - name: Validate Expo dependency compatibility
@@ -54,25 +44,17 @@ jobs:
         run: |
           test -f android/app/build/outputs/apk/release/app-release.apk
           unzip -l android/app/build/outputs/apk/release/app-release.apk | grep -E 'assets/index.android.bundle|assets/.*\.bundle' >/dev/null
-      - name: Prepare APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.2.apk
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Lestra-After-Beta-0.5.2
-          path: Lestra-After-Beta-0.5.2.apk
-          if-no-files-found: error
-          retention-days: 7
       - name: Publish beta APK as GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view after-beta-0.5.2 >/dev/null 2>&1; then
-            gh release upload after-beta-0.5.2 Lestra-After-Beta-0.5.2.apk --clobber
+          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.3.apk
+          if gh release view after-beta-0.5.3 >/dev/null 2>&1; then
+            gh release upload after-beta-0.5.3 Lestra-After-Beta-0.5.3.apk --clobber
           else
-            gh release create after-beta-0.5.2 Lestra-After-Beta-0.5.2.apk \
-              --title "Lestra After Beta 0.5.2" \
-              --notes "Corrección Android: incluye el Google Web Client ID requerido por el inicio de sesión nativo y mantiene el rediseño responsive de After." \
+            gh release create after-beta-0.5.3 Lestra-After-Beta-0.5.3.apk \
+              --title "Lestra After Beta 0.5.3" \
+              --notes "Corrección de autenticación Android: vuelve al flujo OAuth de Supabase con navegador seguro y deep link de retorno a la app. No depende del certificado SHA-1 del APK. Mantiene el rediseño de After sin cambios funcionales adicionales." \
               --prerelease \
               --target "$GITHUB_SHA"
           fi
