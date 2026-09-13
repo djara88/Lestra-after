@@ -23,12 +23,14 @@ jobs:
             --pattern 'Lestra-After-Beta-0.5.3.apk'
           test -f Lestra-After-Beta-0.5.3.apk
           sha256sum Lestra-After-Beta-0.5.3.apk
+          zip -0 Lestra-After-Beta-0.5.3.zip Lestra-After-Beta-0.5.3.apk
+          test -f Lestra-After-Beta-0.5.3.zip
 
       - name: Create temporary transfer link
         run: |
           set -euo pipefail
           response=$(curl -L --fail --silent --show-error --max-time 300 \
-            -F 'files[]=@Lestra-After-Beta-0.5.3.apk' \
+            -F 'files[]=@Lestra-After-Beta-0.5.3.zip' \
             https://uguu.se/upload)
           echo "$response"
           url=$(printf '%s' "$response" | jq -r '.files[0].url // empty')
