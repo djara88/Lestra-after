@@ -1,7 +1,8 @@
 import * as WebBrowser from 'expo-web-browser';
+import type { Provider } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
-export const GOOGLE_REDIRECT = 'lestraafter://google-auth';
+export const AUTH_REDIRECT = 'lestraafter://auth/callback';
 
 function readParam(url: string, name: string) {
   const query = url.includes('?') ? url.split('?')[1]?.split('#')[0] ?? '' : '';
@@ -18,8 +19,38 @@ export function dismissOAuthBrowser() {
   try {
     WebBrowser.dismissBrowser();
   } catch {
-    // Same as above: closing an already dismissed custom tab is harmless.
+    // Closing an already dismissed custom tab is harmless.
   }
+}
+
+export async function getOAuthUrl(provider: Extract<Provider, 'google' | 'azure'>) {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: {
+      redirectTo: AUTH_REDIRECT,
+      skipBrowserRedirect: true,
+      scopes: provider === 'azure' ? 'email' : undefined,
+      queryParams: { prompt: 'select_account' },
+    },
+  });
+  if (error) throw error;
+  if (!data.url) throw new Error('El proveedor de identidad no devolvió una URL de acceso.');
+  return data.url;
+}
+
+export async function getEnterpriseSsoUrl(domain: string) {
+  const normalizedDomain = domain.trim().toLowerCase().replace(/^@/, '');
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(normalizedDomain)) {
+    throw new Error('Escribe un dominio corporativo válido, por ejemplo empresa.cl.');
+  }
+
+  const { data, error } = await supabase.auth.signInWithSSO({
+    domain: normalizedDomain,
+    options: { redirectTo: AUTH_REDIRECT },
+  });
+  if (error) throw error;
+  if (!data?.url) throw new Error('No hay un proveedor SSO configurado para ese dominio.');
+  return data.url;
 }
 
 export async function completeOAuthUrl(url: string) {
@@ -44,5 +75,5 @@ export async function completeOAuthUrl(url: string) {
     return;
   }
 
-  throw new Error('La respuesta de Google no incluyó una sesión válida.');
+  throw new Error('El proveedor de identidad no devolvió una sesión válida.');
 }
