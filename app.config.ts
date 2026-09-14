@@ -1,11 +1,6 @@
 import type { ExpoConfig, ConfigContext } from 'expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => {
-  const iosUrlScheme = process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME;
-  const googlePlugin: string | [string, { iosUrlScheme: string }] = iosUrlScheme
-    ? ['@react-native-google-signin/google-signin', { iosUrlScheme }]
-    : '@react-native-google-signin/google-signin';
-
   return {
     ...config,
     name: 'Lestra After',
@@ -14,9 +9,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     version: '0.5.5',
     orientation: 'portrait',
     userInterfaceStyle: 'light',
-    // Emergency Render build path: classic architecture avoids the heavy
-    // C++ new-architecture compile that exceeded the free builder resources.
-    // Product branch remains unchanged.
+    // Build-only branch: keep the classic architecture to reduce Android
+    // compiler memory. The product branch remains unchanged.
     newArchEnabled: false,
     ios: {
       supportsTablet: false,
@@ -30,7 +24,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins: [
       'expo-router',
       'expo-secure-store',
-      googlePlugin,
       [
         'expo-image-picker',
         {

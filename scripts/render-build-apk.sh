@@ -56,12 +56,22 @@ npm run typecheck
 npx expo install --check
 npx expo prebuild --platform android --clean --no-install
 
+# Render's free builder is memory-constrained. Keep all compiler work inside
+# one low-footprint JVM and one worker; this avoids the late dex/metaspace OOM
+# that killed the previous two builds after the JS bundle was already valid.
+cat >> android/gradle.properties <<'EOF'
+org.gradle.daemon=false
+org.gradle.parallel=false
+org.gradle.workers.max=1
+org.gradle.jvmargs=-Xmx448m -XX:MaxMetaspaceSize=384m -XX:+UseSerialGC -Dfile.encoding=UTF-8
+kotlin.compiler.execution.strategy=in-process
+kotlin.incremental=false
+EOF
+
 cd android
 chmod +x gradlew
-./gradlew assembleRelease --no-daemon \
-  -PreactNativeArchitectures=arm64-v8a \
-  -Dorg.gradle.workers.max=1 \
-  -Dorg.gradle.jvmargs="-Xmx640m -XX:MaxMetaspaceSize=320m -Dfile.encoding=UTF-8"
+./gradlew :app:assembleRelease --no-daemon --max-workers=1 \
+  -PreactNativeArchitectures=arm64-v8a
 cd "$ROOT"
 
 test -f android/app/build/outputs/apk/release/app-release.apk
