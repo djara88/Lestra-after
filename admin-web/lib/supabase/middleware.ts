@@ -4,8 +4,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 type CookieOptions = { domain?: string; expires?: Date; httpOnly?: boolean; maxAge?: number; path?: string; sameSite?: boolean|'lax'|'strict'|'none'; secure?: boolean };
 type CookieToSet = { name: string; value: string; options?: CookieOptions };
 
-const PRODUCTION_SUPABASE_URL = 'https://tdbfypwxgtadeeoihneq.supabase.co';
-const PRODUCTION_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_0pz3poS7oYx9z-4RJqSq3w_9xaqATdl';
+const PRODUCTION_SUPABASE_URL = 'https://yihcktculicmuuzzxzik.supabase.co';
+const PRODUCTION_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_ZpxmCzRu3-CQ8LIUXhdZtA_lOhk_wzU';
 
 function nextResponse(request: NextRequest, headers: Headers) {
   return NextResponse.next({ request: { headers } });
