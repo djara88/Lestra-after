@@ -1,0 +1,60 @@
+name: Android Beta APK
+
+on:
+  push:
+    branches:
+      - feat/after-school-core-ocr
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://yihcktculicmuuzzxzik.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ZpxmCzRu3-CQ8LIUXhdZtA_lOhk_wzU
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 1017541924770-8v7k9m0mj56mj03cr7r11hdoec9b5cdp.apps.googleusercontent.com
+      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID }}
+      EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME: ${{ secrets.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm install --ignore-scripts --no-fund
+      - run: npm run typecheck
+      - name: Validate Expo dependency compatibility
+        run: npx expo install --check
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --clean --no-install
+      - name: Build standalone release APK with bundled JavaScript
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+      - name: Verify bundled JavaScript is packaged
+        run: |
+          test -f android/app/build/outputs/apk/release/app-release.apk
+          unzip -l android/app/build/outputs/apk/release/app-release.apk | grep -E 'assets/index.android.bundle|assets/.*\.bundle' >/dev/null
+      - name: Publish beta APK as GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.5.apk
+          if gh release view after-beta-0.5.5 >/dev/null 2>&1; then
+            gh release upload after-beta-0.5.5 Lestra-After-Beta-0.5.5.apk --clobber
+          else
+            gh release create after-beta-0.5.5 Lestra-After-Beta-0.5.5.apk \
+              --title "Lestra After Beta 0.5.5" \
+              --notes "Corrección OCR de fechas: cada tarea, prueba o evento se asocia a su fecha local o al encabezado de fecha más cercano. Se elimina el fallback que podía asignar la primera fecha del documento a todos los ítems. Si una fecha es ambigua, After la deja pendiente de revisión en vez de inventarla. Mantiene Mochila, Today Flow, estudio y coordinación familiar." \
+              --prerelease \
+              --target "$GITHUB_SHA"
+          fi

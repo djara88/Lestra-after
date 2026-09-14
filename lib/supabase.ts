@@ -3,8 +3,8 @@ import * as SecureStore from 'expo-secure-store';
 import { AppState, Platform } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
 
-const PRODUCTION_SUPABASE_URL = 'https://tdbfypwxgtadeeoihneq.supabase.co';
-const PRODUCTION_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_0pz3poS7oYx9z-4RJqSq3w_9xaqATdl';
+const PRODUCTION_SUPABASE_URL = 'https://yihcktculicmuuzzxzik.supabase.co';
+const PRODUCTION_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_ZpxmCzRu3-CQ8LIUXhdZtA_lOhk_wzU';
 const isDevelopment = process.env.NODE_ENV === 'development';
 const url = isDevelopment
   ? (process.env.EXPO_PUBLIC_SUPABASE_URL ?? PRODUCTION_SUPABASE_URL)
