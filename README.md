@@ -13,3 +13,6 @@ Aplicación móvil familiar centrada en el alumno. React Native + Expo + TypeScr
 Login → Hoy → Agenda → Agregar → Familia.
 
 La IA se incorpora después del flujo manual y siempre con revisión humana antes de crear información definitiva.
+
+## Beta 0.5.8
+OCR estructural para calendarios escolares y carga de horario por OCR conectada con Mochila.
