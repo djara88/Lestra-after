@@ -3,6 +3,9 @@ import type { Provider } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 export const AUTH_REDIRECT = 'lestraafter://auth/callback';
+// Alias mantenido para el callback de Google y compatible con el redirect
+// común usado por los demás proveedores de identidad.
+export const GOOGLE_REDIRECT = AUTH_REDIRECT;
 
 function readParam(url: string, name: string) {
   const query = url.includes('?') ? url.split('?')[1]?.split('#')[0] ?? '' : '';
