@@ -29,7 +29,7 @@ export type BackpackSubject = {
 export type BackpackChecklistItem = {
   item_key: string;
   source_id: string;
-  source_type: 'subject' | 'academic';
+  source_type: 'kit' | 'subject' | 'academic' | 'manual';
   name: string;
   subject_id?: string | null;
   subject_name: string;
@@ -45,6 +45,8 @@ export type BackpackWorkspace = {
   classes: ScheduleEntry[];
   subjects: BackpackSubject[];
   checklist: BackpackChecklistItem[];
+  kit_items: Array<{ id: string; name: string }>;
+  manual_items: Array<{ id: string; name: string; target_date: string; subject_id?: string | null; subject_name?: string | null }>;
 };
 
 export type SaveScheduleInput = {
@@ -87,6 +89,8 @@ export async function getBackpackWorkspace(studentId: string, targetDate?: strin
     classes: Array.isArray(raw.classes) ? raw.classes : [],
     subjects: Array.isArray(raw.subjects) ? raw.subjects : [],
     checklist: Array.isArray(raw.checklist) ? raw.checklist : [],
+    kit_items: Array.isArray(raw.kit_items) ? raw.kit_items : [],
+    manual_items: Array.isArray(raw.manual_items) ? raw.manual_items : [],
   };
 }
 
@@ -151,3 +155,7 @@ export function shiftDate(dateIso: string, days: number) {
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
 }
+
+export async function saveDailyBackpackItem(studentId:string,targetDate:string,name:string,subjectId?:string|null){const {data,error}=await supabase.rpc('after_save_backpack_daily_item',{p_item_id:null,p_student_id:studentId,p_target_date:targetDate,p_name:name.trim(),p_subject_id:subjectId||null});if(error)throw new BackpackError('No pudimos agregar ese material.');return data as string;}
+export async function deleteDailyBackpackItem(itemId:string){const {error}=await supabase.rpc('after_delete_backpack_daily_item',{p_item_id:itemId});if(error)throw new BackpackError('No pudimos eliminar ese material.');}
+export async function setBackpackKitItems(studentId:string,items:string[]){const {error}=await supabase.rpc('after_set_backpack_kit_items',{p_student_id:studentId,p_items:items});if(error)throw new BackpackError('No pudimos guardar el estuche.');}
