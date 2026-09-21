@@ -16,7 +16,7 @@ export default function AppLayout(){
   const androidTop=Platform.OS==='android'?RNStatusBar.currentHeight??24:0;
   return <Tabs screenOptions={{headerShown:false,sceneStyle:{paddingTop:androidTop,backgroundColor:'#FFF9F3'},tabBarHideOnKeyboard:true,tabBarActiveTintColor:'#314A38',tabBarInactiveTintColor:'#8D8178',tabBarLabelStyle:{fontSize:9.5,fontWeight:'800',marginTop:1},tabBarItemStyle:{paddingTop:4},tabBarStyle:{borderTopWidth:0,backgroundColor:'#FFFDF9',paddingTop:3,elevation:12,shadowColor:'#2B2926',shadowOpacity:.08,shadowRadius:16,shadowOffset:{width:0,height:-4}}}}>
     <Tabs.Screen name="index" options={{title:'Hoy',tabBarIcon:({focused})=><TabGlyph active={focused} kind="today"/>}}/>
-    <Tabs.Screen name="agenda" options={{title:'Semana',tabBarIcon:({focused})=><TabGlyph active={focused} kind="week"/>}}/>
+    <Tabs.Screen name="agenda" options={{title:'Calendario',tabBarIcon:({focused})=><TabGlyph active={focused} kind="week"/>}}/>
     <Tabs.Screen name="agregar" options={{title:'Colegio',tabBarIcon:({focused})=><TabGlyph active={focused} kind="school"/>}}/>
     <Tabs.Screen name="mochila" options={{title:'Mochila',tabBarIcon:({focused})=><TabGlyph active={focused} kind="backpack"/>}}/>
     <Tabs.Screen name="pendientes" options={{title:'Pendientes',tabBarIcon:({focused})=><TabGlyph active={focused} kind="pending"/>}}/>
