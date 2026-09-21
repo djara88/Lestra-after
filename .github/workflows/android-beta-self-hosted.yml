@@ -1,0 +1,116 @@
+name: Android Beta APK - Self Hosted
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/after-stabilization-auth-runner-v1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: after-android-beta-self-hosted
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    runs-on: [self-hosted, Windows, X64, after-builder]
+    timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://yihcktculicmuuzzxzik.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ZpxmCzRu3-CQ8LIUXhdZtA_lOhk_wzU
+      EXPO_PUBLIC_ENABLE_AZURE_AUTH: 'false'
+      EXPO_PUBLIC_ENABLE_ENTERPRISE_SSO: 'false'
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify Android builder
+        shell: pwsh
+        run: |
+          Write-Host "Runner: $env:RUNNER_NAME"
+          Write-Host "ANDROID_HOME: $env:ANDROID_HOME"
+          if (-not $env:ANDROID_HOME) { throw 'ANDROID_HOME no está configurado en el runner.' }
+          if (-not (Test-Path $env:ANDROID_HOME)) { throw "ANDROID_HOME no existe: $env:ANDROID_HOME" }
+          java -version
+          node --version
+          npm --version
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm ci --ignore-scripts --no-fund
+
+      - name: TypeScript
+        shell: pwsh
+        run: npm run typecheck
+
+      - name: Validate Expo dependency compatibility
+        shell: pwsh
+        run: npx expo install --check
+
+      - name: Generate native Android project
+        shell: pwsh
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Build release APK
+        shell: pwsh
+        working-directory: android
+        run: |
+          $env:GRADLE_OPTS = '-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"'
+          .\gradlew.bat assembleRelease --no-daemon --max-workers=2
+
+      - name: Verify APK and bundled JavaScript
+        id: metadata
+        shell: pwsh
+        run: |
+          $apk = 'android\app\build\outputs\apk\release\app-release.apk'
+          if (-not (Test-Path $apk)) { throw "No se generó $apk" }
+          $entries = & "$env:JAVA_HOME\bin\jar.exe" tf $apk
+          if (-not ($entries | Select-String -Pattern 'assets/index.android.bundle|assets/.*\.bundle')) {
+            throw 'El APK no contiene el bundle JavaScript.'
+          }
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          $version = [string]$pkg.version
+          $name = "Lestra-After-Beta-$version.apk"
+          Copy-Item $apk $name -Force
+          $hash = (Get-FileHash $name -Algorithm SHA256).Hash.ToLowerInvariant()
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "file=$name" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "APK: $name"
+          Write-Host "SHA256: $hash"
+
+      - name: Publish GitHub prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ steps.metadata.outputs.version }}'
+          $file = '${{ steps.metadata.outputs.file }}'
+          $sha = '${{ steps.metadata.outputs.sha256 }}'
+          $tag = "after-beta-$version"
+          $notes = @"
+          Lestra After Beta $version
+
+          Build generado en runner Windows Server 2022 autohospedado.
+          SHA256: $sha
+
+          Incluye el estado actual de Today Flow, Mochila, coordinación familiar y correcciones OCR.
+          "@
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $file --clobber
+          } else {
+            gh release create $tag $file --title "Lestra After Beta $version" --notes $notes --prerelease --target $env:GITHUB_SHA
+          }

@@ -12,16 +12,15 @@ jobs:
     env:
       EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: test-public-key
-      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 000000000000-example.apps.googleusercontent.com
-      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: 000000000000-example.apps.googleusercontent.com
-      EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME: com.googleusercontent.apps.000000000000-example
+      EXPO_PUBLIC_ENABLE_AZURE_AUTH: 'false'
+      EXPO_PUBLIC_ENABLE_ENTERPRISE_SSO: 'false'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm install --ignore-scripts --no-fund
+      - run: npm ci --ignore-scripts --no-fund
       - run: npm run typecheck
       - name: Validate Expo dependency compatibility
         run: npx expo install --check
@@ -47,7 +46,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install --ignore-scripts --no-fund
+      - run: npm ci --ignore-scripts --no-fund
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run typecheck
       - run: npm run build
