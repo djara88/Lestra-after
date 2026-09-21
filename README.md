@@ -16,3 +16,7 @@ La IA se incorpora después del flujo manual y siempre con revisión humana ante
 
 ## Beta 0.5.8
 OCR estructural para calendarios escolares y carga de horario por OCR conectada con Mochila.
+
+
+## Beta 0.5.9
+Calendario con vistas Semana/Mes/Año y Mochila rediseñada para niños: estuche global, materiales especiales manuales, OCR de horario y checklist diario.
