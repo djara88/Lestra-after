@@ -228,7 +228,7 @@ function applyTime(date: Date | null, text: string) {
 }
 
 function materialsFromText(text: string) {
-  const match = text.match(/(?:traer|llevar|material(?:es)?|necesita(?:n)?|con)\s*[:\-]?\s*([^\n.;]{3,220})/i);
+  const match = text.match(/\b(?:traer|llevar|material(?:es)?|necesita(?:n)?|con)\b\s*[:\-]?\s*([^\n.;]{3,220})/i);
   const raw = match?.[1];
   if (!raw) return [];
   return raw
