@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';
@@ -12,7 +12,38 @@ export default function Login() {
 
   useEffect(() => {
     void WebBrowser.warmUpAsync();
+
+    const handleOAuthCallback = async ({ url }: { url: string }) => {
+      if (!url.startsWith(GOOGLE_REDIRECT)) return;
+
+      try {
+        setBusy(true);
+        await completeOAuthUrl(url);
+
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (!data.session) throw new Error('Google volvió a After, pero Supabase no creó una sesión.');
+
+        dismissOAuthBrowser();
+        router.replace('/');
+      } catch (error) {
+        console.error('Google OAuth callback failed', error);
+        dismissOAuthBrowser();
+        Alert.alert('No pudimos iniciar sesión', 'Google validó tu identidad, pero After no pudo crear la sesión.');
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', handleOAuthCallback);
+    void Linking.getInitialURL().then((url) => {
+      if (url?.startsWith(GOOGLE_REDIRECT)) {
+        void handleOAuthCallback({ url });
+      }
+    });
+
     return () => {
+      subscription.remove();
       void WebBrowser.coolDownAsync();
     };
   }, []);
@@ -47,6 +78,13 @@ export default function Login() {
       }
 
       await completeOAuthUrl(result.url);
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!sessionData.session) {
+        throw new Error('Google volvió a After, pero Supabase no creó una sesión.');
+      }
+
       dismissOAuthBrowser();
       router.replace('/');
     } catch (error) {
