@@ -6,11 +6,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: 'Lestra After',
     slug: 'lestra-after',
     scheme: 'lestraafter',
-    version: '0.5.5',
+    version: '0.5.6',
     orientation: 'portrait',
     userInterfaceStyle: 'light',
-    // Build-only branch: keep the classic architecture to reduce Android
-    // compiler memory. The product branch remains unchanged.
+    // Stabilization build: classic architecture reduces Android build memory
+    // while we validate the real product flow on physical devices.
     newArchEnabled: false,
     ios: {
       supportsTablet: false,
@@ -18,7 +18,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     android: {
       package: 'app.lestra.after',
-      versionCode: 6,
+      versionCode: 7,
       adaptiveIcon: { backgroundColor: '#FFF8F1' },
     },
     plugins: [
