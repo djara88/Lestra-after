@@ -3,7 +3,8 @@ name: Android Beta APK
 on:
   push:
     branches:
-      - stabilize/after-0.5.6
+      - stabilize/after-0.5.7
+      - fix/after-beta-0.5.7-google-oauth
   workflow_dispatch:
 
 permissions:
@@ -65,7 +66,7 @@ jobs:
       - name: Keep APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Lestra-After-Beta-0.5.6
+          name: Lestra-After-Beta-0.5.7
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
@@ -73,9 +74,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.6.apk
-          if gh release view after-beta-0.5.6 >/dev/null 2>&1; then
-            gh release upload after-beta-0.5.6 Lestra-After-Beta-0.5.6.apk --clobber
+          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.7.apk
+          if gh release view after-beta-0.5.7 >/dev/null 2>&1; then
+            gh release upload after-beta-0.5.7 Lestra-After-Beta-0.5.7.apk --clobber
           else
-            gh release create after-beta-0.5.6 Lestra-After-Beta-0.5.6.apk               --title "Lestra After Beta 0.5.6"               --notes "Build de estabilización: Today Flow, Agenda, Mochila, estudio, coordinación familiar, OCR local y autenticación Google vía Supabase OAuth."               --prerelease               --target "$GITHUB_SHA"
+            gh release create after-beta-0.5.7 Lestra-After-Beta-0.5.7.apk               --title "Lestra After Beta 0.5.7"               --notes "Build de corrección: conserva OCR y asociación de fechas de 0.5.6 y corrige el retorno de Google OAuth en Android."               --prerelease               --target "$GITHUB_SHA"
           fi
