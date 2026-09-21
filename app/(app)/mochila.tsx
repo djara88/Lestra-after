@@ -14,6 +14,8 @@ import {
   View,
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import { readScheduleFromImage } from '@/lib/scheduleOcr';
 import { AfterGlyph } from '@/components/AfterGlyph';
 import {
   deleteScheduleEntry,
