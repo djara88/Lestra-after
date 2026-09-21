@@ -163,6 +163,35 @@ export default function Backpack() {
     setShowEntryEditor(true);
   }
 
+  async function importSchedulePhoto() {
+    if (!studentId || busyKey) return;
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+    if (picked.canceled || !picked.assets[0]) return;
+    setBusyKey('schedule-ocr');
+    try {
+      const entries = await readScheduleFromImage(picked.assets[0].uri);
+      const summary = [1,2,3,4,5].map(day => weekdayLabel(day) + ': ' + (entries.filter(e => e.weekday === day).map(e => e.subjectName).join(', ') || '—')).join('\n');
+      Alert.alert('Horario reconocido', summary, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Confirmar', onPress: async () => {
+          try {
+            for (const entry of entries) {
+              await saveScheduleEntry({ entryId: null, studentId, weekday: entry.weekday, periodOrder: entry.periodOrder, subjectName: entry.subjectName, startTime: null, endTime: null, room: null });
+            }
+            await loadWorkspace(studentId, workspace?.target_date || null);
+            Alert.alert('Horario listo', 'El horario quedó conectado con la Mochila.');
+          } catch (error) {
+            Alert.alert('No pudimos guardar', error instanceof Error ? error.message : 'Revisa e intenta nuevamente.');
+          }
+        }},
+      ]);
+    } catch (error) {
+      Alert.alert('No pudimos leer el horario', error instanceof Error ? error.message : 'Usa una foto frontal del horario completo.');
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   async function saveEntry() {
     const block = Number(periodOrder);
     if (!studentId || !subjectName.trim() || !Number.isInteger(block) || block < 1 || block > 20) {
