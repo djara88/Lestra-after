@@ -77,6 +77,10 @@ const EVENT_KEYWORDS: Array<[RegExp, string]> = [
 
 type DateHint = { month?: number; year?: number };
 
+type OcrBox = { x: number; y: number; width: number; height: number };
+type OcrLine = { text: string; boundingBox: OcrBox };
+type Recognition = { text: string; blocks?: Array<{ text: string; boundingBox: OcrBox; lines?: OcrLine[] }> };
+
 function stripAccents(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
@@ -234,6 +238,116 @@ function materialsFromText(text: string) {
     .slice(0, 12);
 }
 
+
+function candidatesForCalendarCell(cellText: string, date: Date): LocalCandidate[] {
+  const lines = compact(cellText).split('\n').map(v => v.trim()).filter(Boolean);
+  const candidates: LocalCandidate[] = [];
+  const subject = subjectFromText(cellText);
+  const materials = materialsFromText(cellText);
+  const when = applyTime(date, cellText);
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]!;
+    const context = [lines[i - 1], line, lines[i + 1]].filter(Boolean).join(' · ');
+    let academicType: string | null = null;
+    for (const [pattern, type] of ACADEMIC_KEYWORDS) if (pattern.test(line)) { academicType = type; break; }
+    if (academicType) {
+      candidates.push({
+        candidate_type: 'academic_item',
+        title: titleFromLine(line, academicType === 'test' ? 'Prueba del colegio' : 'Pendiente del colegio'),
+        description: context === line ? null : context,
+        due_at: when,
+        confidence: .97,
+        academic_type: academicType,
+        subject,
+        priority: academicType === 'test' || academicType === 'exam' ? 'high' : 'normal',
+        materials,
+      });
+      continue;
+    }
+    let category: string | null = null;
+    for (const [pattern, value] of EVENT_KEYWORDS) if (pattern.test(line)) { category = value; break; }
+    if (category) candidates.push({
+      candidate_type: 'calendar_event',
+      title: titleFromLine(line, 'Actividad del colegio'),
+      description: context === line ? null : context,
+      starts_at: when,
+      confidence: .97,
+      subject: category,
+    });
+  }
+  return candidates;
+}
+
+function parseCalendarLayout(recognition: Recognition): LocalCandidate[] {
+  const hint = documentDateHint(recognition.text || '');
+  if (hint.month === undefined || hint.year === undefined) return [];
+  const lines = (recognition.blocks ?? []).flatMap(block => block.lines ?? []);
+  if (lines.length < 8) return [];
+
+  const normalized = (v: string) => stripAccents(v.toLowerCase()).trim();
+  const weekdayHeaders = lines.filter(line => /^(lunes|martes|miercoles|jueves|viernes)$/.test(normalized(line.text)));
+  if (weekdayHeaders.length < 4) return [];
+
+  const headerY = Math.max(...weekdayHeaders.map(line => line.boundingBox.y + line.boundingBox.height));
+  const centers = weekdayHeaders
+    .map(line => ({ name: normalized(line.text), x: line.boundingBox.x + line.boundingBox.width / 2 }))
+    .sort((a, b) => a.x - b.x);
+  const expected = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes'];
+  const columnCenters = expected.map((day, index) => centers.find(item => item.name === day)?.x ?? centers[index]?.x).filter((x): x is number => Number.isFinite(x));
+  if (columnCenters.length !== 5) return [];
+
+  const boundaries = [-Infinity,
+    (columnCenters[0]! + columnCenters[1]!) / 2,
+    (columnCenters[1]! + columnCenters[2]!) / 2,
+    (columnCenters[2]! + columnCenters[3]!) / 2,
+    (columnCenters[3]! + columnCenters[4]!) / 2,
+    Infinity];
+
+  const dateAnchors = lines
+    .filter(line => line.boundingBox.y > headerY && /^(?:[1-9]|[12]\d|3[01])$/.test(line.text.trim()))
+    .map(line => {
+      const x = line.boundingBox.x + line.boundingBox.width / 2;
+      const col = boundaries.findIndex((_, i) => i < 5 && x >= boundaries[i]! && x < boundaries[i + 1]!);
+      return { day: Number(line.text.trim()), col, y: line.boundingBox.y, line };
+    })
+    .filter(anchor => anchor.col >= 0 && anchor.col < 5);
+
+  if (dateAnchors.length < 5) return [];
+
+  const rowYs: number[] = [];
+  for (const anchor of [...dateAnchors].sort((a, b) => a.y - b.y)) {
+    const tolerance = Math.max(18, anchor.line.boundingBox.height * 1.8);
+    if (!rowYs.some(y => Math.abs(y - anchor.y) <= tolerance)) rowYs.push(anchor.y);
+  }
+  rowYs.sort((a, b) => a - b);
+
+  const candidates: LocalCandidate[] = [];
+  const seen = new Set<string>();
+  for (const anchor of dateAnchors) {
+    const row = rowYs.reduce((best, y, idx) => Math.abs(y - anchor.y) < Math.abs(rowYs[best]! - anchor.y) ? idx : best, 0);
+    const top = rowYs[row]! - Math.max(8, anchor.line.boundingBox.height);
+    const bottom = row + 1 < rowYs.length ? (rowYs[row]! + rowYs[row + 1]!) / 2 : Infinity;
+    const cellLines = lines
+      .filter(line => {
+        const cx = line.boundingBox.x + line.boundingBox.width / 2;
+        const cy = line.boundingBox.y + line.boundingBox.height / 2;
+        return cx >= boundaries[anchor.col]! && cx < boundaries[anchor.col + 1]! && cy >= top && cy < bottom && line !== anchor.line;
+      })
+      .filter(line => !/^(lunes|martes|miercoles|jueves|viernes|\d{1,2})$/i.test(normalized(line.text)))
+      .sort((a, b) => a.boundingBox.y - b.boundingBox.y || a.boundingBox.x - b.boundingBox.x);
+
+    const date = validDate(hint.year, hint.month, anchor.day);
+    if (!date || cellLines.length === 0) continue;
+    const cellText = cellLines.map(line => line.text).join('\n');
+    for (const candidate of candidatesForCalendarCell(cellText, date)) {
+      const key = [candidate.candidate_type, candidate.title.toLowerCase(), candidate.due_at ?? candidate.starts_at ?? ''].join(':');
+      if (!seen.has(key)) { seen.add(key); candidates.push(candidate); }
+    }
+  }
+  return candidates.slice(0, 40);
+}
+
 export function parseSchoolText(rawText: string): LocalCandidate[] {
   const text = compact(rawText);
   if (!text) return [];
@@ -325,14 +439,14 @@ export function parseSchoolText(rawText: string): LocalCandidate[] {
   return candidates.slice(0, 20);
 }
 
-async function ocrImage(uri: string) {
+async function ocrImage(uri: string): Promise<Recognition> {
   if (!isSupported()) {
     throw new LocalOcrError('unsupported_device', 'OCR no está disponible en esta instalación. Usa la beta nativa de After.');
   }
 
   try {
     const result = await recognizeText(uri);
-    return compact(result.text ?? '');
+    return { ...result, text: compact(result.text ?? '') } as Recognition;
   } catch (error) {
     if (error instanceof LocalOcrError) throw error;
     throw new LocalOcrError('ocr_failed', 'No pudimos procesar la imagen. Intenta nuevamente.');
@@ -358,8 +472,8 @@ export async function runLocalOcr(uri: string, mimeType: string): Promise<LocalO
       processedPages = pages.length;
       const chunks: string[] = [];
       for (const page of pages) {
-        const pageText = await ocrImage(page.uri);
-        if (pageText) chunks.push(`--- Página ${page.page + 1} ---\n${pageText}`);
+        const pageResult = await ocrImage(page.uri);
+        if (pageResult.text) chunks.push(`--- Página ${page.page + 1} ---\n${pageResult.text}`);
       }
       text = compact(chunks.join('\n\n'));
     } catch (error) {
@@ -367,7 +481,19 @@ export async function runLocalOcr(uri: string, mimeType: string): Promise<LocalO
       throw new LocalOcrError('pdf_read_failed', 'No pudimos convertir este PDF para leerlo. Prueba con una foto o un PDF más simple.');
     }
   } else if (mimeType.startsWith('image/')) {
-    text = await ocrImage(uri);
+    const recognition = await ocrImage(uri);
+    text = recognition.text;
+    const structured = parseCalendarLayout(recognition);
+    if (structured.length) {
+      return {
+        text,
+        candidates: structured,
+        pageCount,
+        processedPages,
+        provider: 'on-device-mlkit',
+        durationMs: Date.now() - startedAt,
+      };
+    }
   } else {
     throw new LocalOcrError('file_invalid', 'After sólo puede leer imágenes y PDF en este flujo.');
   }
