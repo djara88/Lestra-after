@@ -3,7 +3,7 @@ name: Android Beta APK
 on:
   push:
     branches:
-      - feat/after-school-core-ocr
+      - stabilize/after-0.5.6
   workflow_dispatch:
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       EXPO_PUBLIC_SUPABASE_URL: https://yihcktculicmuuzzxzik.supabase.co
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ZpxmCzRu3-CQ8LIUXhdZtA_lOhk_wzU
@@ -21,40 +21,62 @@ jobs:
       EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME: ${{ secrets.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
+
       - run: npm install --ignore-scripts --no-fund
       - run: npm run typecheck
+
       - name: Validate Expo dependency compatibility
         run: npx expo install --check
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Configure Gradle for GitHub runner
+        run: |
+          cat >> android/gradle.properties <<'EOF'
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.workers.max=2
+          org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8
+          kotlin.compiler.execution.strategy=in-process
+          EOF
+
       - name: Build standalone release APK with bundled JavaScript
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew :app:assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a
+
       - name: Verify bundled JavaScript is packaged
         run: |
           test -f android/app/build/outputs/apk/release/app-release.apk
           unzip -l android/app/build/outputs/apk/release/app-release.apk | grep -E 'assets/index.android.bundle|assets/.*\.bundle' >/dev/null
+
+      - name: Keep APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lestra-After-Beta-0.5.6
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
       - name: Publish beta APK as GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.5.apk
-          if gh release view after-beta-0.5.5 >/dev/null 2>&1; then
-            gh release upload after-beta-0.5.5 Lestra-After-Beta-0.5.5.apk --clobber
+          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.6.apk
+          if gh release view after-beta-0.5.6 >/dev/null 2>&1; then
+            gh release upload after-beta-0.5.6 Lestra-After-Beta-0.5.6.apk --clobber
           else
-            gh release create after-beta-0.5.5 Lestra-After-Beta-0.5.5.apk \
-              --title "Lestra After Beta 0.5.5" \
-              --notes "Corrección OCR de fechas: cada tarea, prueba o evento se asocia a su fecha local o al encabezado de fecha más cercano. Se elimina el fallback que podía asignar la primera fecha del documento a todos los ítems. Si una fecha es ambigua, After la deja pendiente de revisión en vez de inventarla. Mantiene Mochila, Today Flow, estudio y coordinación familiar." \
-              --prerelease \
-              --target "$GITHUB_SHA"
+            gh release create after-beta-0.5.6 Lestra-After-Beta-0.5.6.apk               --title "Lestra After Beta 0.5.6"               --notes "Build de estabilización: Today Flow, Agenda, Mochila, estudio, coordinación familiar, OCR local y autenticación Google vía Supabase OAuth."               --prerelease               --target "$GITHUB_SHA"
           fi
