@@ -19,6 +19,9 @@ import { readScheduleFromImage } from '@/lib/scheduleOcr';
 import { AfterGlyph } from '@/components/AfterGlyph';
 import {
   deleteScheduleEntry,
+  saveDailyBackpackItem,
+  deleteDailyBackpackItem,
+  setBackpackKitItems,
   getBackpackStudents,
   getBackpackWorkspace,
   saveScheduleEntry,
@@ -69,6 +72,10 @@ export default function Backpack() {
   const [room, setRoom] = useState('');
   const [materialSubject, setMaterialSubject] = useState<BackpackSubject | null>(null);
   const [materialText, setMaterialText] = useState('');
+  const [showSpecial, setShowSpecial] = useState(false);
+  const [specialText, setSpecialText] = useState('');
+  const [showKit, setShowKit] = useState(false);
+  const [kitText, setKitText] = useState('');
 
   const loadWorkspace = useCallback(async (id: string, targetDate?: string | null) => {
     if (!id) return;
@@ -246,6 +253,23 @@ export default function Backpack() {
     }
   }
 
+  async function saveSpecial() {
+    if (!workspace || !specialText.trim()) return;
+    const names = specialText.split(/,|\n|\by\b/i).map(v => v.trim()).filter(Boolean).slice(0, 12);
+    setBusyKey('special');
+    try { for (const name of names) await saveDailyBackpackItem(studentId, workspace.target_date, name); setSpecialText(''); setShowSpecial(false); await loadWorkspace(studentId, workspace.target_date); }
+    catch (error) { Alert.alert('No pudimos agregarlo', error instanceof Error ? error.message : 'Vuelve a intentar.'); }
+    finally { setBusyKey(null); }
+  }
+
+  async function saveKit() {
+    const items = kitText.split(/,|\n/i).map(v => v.trim()).filter(Boolean).slice(0, 20);
+    setBusyKey('kit');
+    try { await setBackpackKitItems(studentId, items); setShowKit(false); await loadWorkspace(studentId, workspace?.target_date || null); }
+    catch (error) { Alert.alert('No pudimos guardar el estuche', error instanceof Error ? error.message : 'Vuelve a intentar.'); }
+    finally { setBusyKey(null); }
+  }
+
   function openMaterials(subject: BackpackSubject) {
     setMaterialSubject(subject);
     setMaterialText(subject.items.map(item => item.name).join(', '));
@@ -277,9 +301,9 @@ export default function Backpack() {
   return <SafeAreaView style={s.safe}>
     <ScrollView contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={s.topRow}><Pressable accessibilityRole="button" accessibilityLabel="Volver" onPress={() => router.back()} style={s.back}><Text style={s.backText}>‹</Text></Pressable><View style={s.heroMark}><AfterGlyph kind="backpack" active size={38} surface={false}/></View></View>
-      <Text style={s.eyebrow}>RUTINA ESCOLAR</Text>
-      <Text style={s.title}>La mochila se prepara antes, no a última hora.</Text>
-      <Text style={s.copy}>After combina el horario semanal con materiales habituales y lo extraordinario que mandó el colegio.</Text>
+      <Text style={s.eyebrow}>MI MOCHILA</Text>
+      <Text style={s.title}>Prepara todo para mañana.</Text>
+      <Text style={s.copy}>Marca cada cosa cuando entre a la mochila. After recuerda las clases y lo especial que te pidieron llevar.</Text>
 
       {students.length > 1 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.childChips}>{students.map(child => {
         const active = child.id === studentId;
@@ -287,8 +311,8 @@ export default function Backpack() {
       })}</ScrollView> : selectedChild ? <View style={s.singleChild}><Text style={s.singleChildName}>{childName(selectedChild)}</Text><Text style={s.singleChildMeta}>{selectedChild.grade_level || 'Horario escolar'}{selectedChild.school_name ? ` · ${selectedChild.school_name}` : ''}</Text></View> : null}
 
       <View style={s.segment}>
-        <Pressable onPress={() => setMode('prepare')} style={[s.segmentButton, mode === 'prepare' && s.segmentActive]}><Text style={[s.segmentText, mode === 'prepare' && s.segmentTextActive]}>Preparar mochila</Text></Pressable>
-        <Pressable onPress={() => setMode('schedule')} style={[s.segmentButton, mode === 'schedule' && s.segmentActive]}><Text style={[s.segmentText, mode === 'schedule' && s.segmentTextActive]}>Horario semanal</Text></Pressable>
+        <Pressable onPress={() => setMode('prepare')} style={[s.segmentButton, mode === 'prepare' && s.segmentActive]}><Text style={[s.segmentText, mode === 'prepare' && s.segmentTextActive]}>Mi mochila</Text></Pressable>
+        <Pressable onPress={() => setMode('schedule')} style={[s.segmentButton, mode === 'schedule' && s.segmentActive]}><Text style={[s.segmentText, mode === 'schedule' && s.segmentTextActive]}>Adultos</Text></Pressable>
       </View>
 
       {mode === 'prepare' && workspace ? <>
@@ -309,14 +333,17 @@ export default function Backpack() {
         </View>
 
         <View style={s.section}>
-          <View style={s.sectionHead}><View><Text style={s.sectionKicker}>QUÉ LLEVAR</Text><Text style={s.sectionTitle}>Checklist del día</Text></View><Text style={s.count}>{totalCount}</Text></View>
-          {workspace.checklist.length === 0 ? <View style={s.empty}><View style={s.emptySignal}><View style={s.emptyLine}/><View style={s.emptyDot}/></View><View style={s.flex}><Text style={s.emptyTitle}>No hay materiales configurados</Text><Text style={s.muted}>En “Horario semanal” agrega lo habitual de cada asignatura. Los materiales extraordinarios de tareas también aparecerán aquí.</Text></View></View> : workspace.checklist.map(item => <Pressable key={item.item_key} accessibilityRole="checkbox" accessibilityState={{ checked: item.packed, disabled: busyKey === item.item_key }} disabled={busyKey === item.item_key} onPress={() => void toggleItem(item.item_key, !item.packed)} style={[s.checkRow, item.packed && s.checkRowDone]}><View style={[s.checkBox, item.packed && s.checkBoxDone]}><View style={item.packed ? s.checkTickA : undefined}/><View style={item.packed ? s.checkTickB : undefined}/></View><View style={s.flex}><Text style={[s.checkTitle, item.packed && s.checkTitleDone]}>{item.name}</Text><Text style={s.meta}>{item.subject_name} · {item.source_type === 'academic' ? 'Pedido especial' : 'Habitual'}</Text></View></Pressable>)}
+          <View style={s.sectionHead}><View><Text style={s.sectionKicker}>QUÉ LLEVAR</Text><Text style={s.sectionTitle}>Marca cuando esté dentro</Text></View><Text style={s.count}>{totalCount}</Text></View>
+          <Pressable onPress={() => setShowSpecial(true)} style={s.secondary}><Text style={{fontSize:22}}>⭐</Text><View style={s.flex}><Text style={s.secondaryTitle}>Me pidieron llevar algo</Text><Text style={s.secondaryCopy}>Agrega cartulina, fotos, materiales u otra cosa para este día.</Text></View><Text style={s.chevron}>＋</Text></Pressable>
+          {workspace.checklist.length === 0 ? <View style={s.empty}><View style={s.emptySignal}><View style={s.emptyLine}/><View style={s.emptyDot}/></View><View style={s.flex}><Text style={s.emptyTitle}>No hay materiales configurados</Text><Text style={s.muted}>En “Horario semanal” agrega lo habitual de cada asignatura. Los materiales extraordinarios de tareas también aparecerán aquí.</Text></View></View> : workspace.checklist.map(item => <Pressable key={item.item_key} accessibilityRole="checkbox" accessibilityState={{ checked: item.packed, disabled: busyKey === item.item_key }} disabled={busyKey === item.item_key} onPress={() => void toggleItem(item.item_key, !item.packed)} style={[s.checkRow, item.packed && s.checkRowDone]}><View style={[s.checkBox, item.packed && s.checkBoxDone]}><View style={item.packed ? s.checkTickA : undefined}/><View style={item.packed ? s.checkTickB : undefined}/></View><View style={s.flex}><Text style={[s.checkTitle, item.packed && s.checkTitleDone]}>{item.name}</Text><Text style={s.meta}>{item.source_type === 'kit' ? 'Todos los días · toca para marcar' : item.source_type === 'academic' || item.source_type === 'manual' ? '⭐ Especial para este día' : item.subject_name}</Text></View></Pressable>)}
         </View>
 
-        <Pressable accessibilityRole="button" onPress={() => setMode('schedule')} style={s.secondary}><AfterGlyph kind="week" active size={22} surface={false}/><View style={s.flex}><Text style={s.secondaryTitle}>Configurar horario y materiales</Text><Text style={s.secondaryCopy}>Define una vez qué clases tiene y qué suele llevar.</Text></View><Text style={s.chevron}>›</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => setMode('schedule')} style={s.secondary}><AfterGlyph kind="week" active size={22} surface={false}/><View style={s.flex}><Text style={s.secondaryTitle}>Adultos · configurar</Text><Text style={s.secondaryCopy}>Horario, OCR, estuche y materiales habituales.</Text></View><Text style={s.chevron}>›</Text></Pressable>
       </> : null}
 
       {mode === 'schedule' && workspace ? <>
+        <View style={s.section}><Text style={s.sectionKicker}>CONFIGURACIÓN DE ADULTOS</Text><Text style={s.sectionTitle}>Rutina del niño</Text><Text style={s.sectionCopy}>Esto se configura ocasionalmente. La pantalla “Mi mochila” queda simple para el niño.</Text>
+        <Pressable onPress={() => { setKitText((workspace.kit_items||[]).map(x=>x.name).join(', ')); setShowKit(true); }} style={s.secondary}><Text style={{fontSize:22}}>✏️</Text><View style={s.flex}><Text style={s.secondaryTitle}>Configurar estuche</Text><Text style={s.secondaryCopy}>{workspace.kit_items?.length ? workspace.kit_items.map(x=>x.name).join(' · ') : 'Lápiz, goma, sacapuntas, regla…'}</Text></View><Text style={s.chevron}>›</Text></Pressable></View>
         <View style={s.weekdays}>{[1,2,3,4,5].map(day => <Pressable key={day} onPress={() => setWeekday(day)} style={[s.dayChip, weekday === day && s.dayChipActive]}><Text style={[s.dayChipText, weekday === day && s.dayChipTextActive]}>{weekdayLabel(day).slice(0,3)}</Text></Pressable>)}</View>
 
         <View style={s.section}>
@@ -326,11 +353,15 @@ export default function Backpack() {
         </View>
 
         <View style={s.section}>
-          <Text style={s.sectionKicker}>MOCHILA BASE</Text><Text style={s.sectionTitle}>Materiales habituales por asignatura</Text><Text style={s.sectionCopy}>Ejemplo: Matemática → cuaderno, libro y estuche. Esto se reutiliza automáticamente cada vez que esa asignatura aparece en el horario.</Text>
+          <Text style={s.sectionKicker}>POR ASIGNATURA</Text><Text style={s.sectionTitle}>Lo que siempre usa en cada ramo</Text><Text style={s.sectionCopy}>Ejemplo: Matemática → cuaderno, libro y estuche. Esto se reutiliza automáticamente cada vez que esa asignatura aparece en el horario.</Text>
           {workspace.subjects.length === 0 ? <Text style={s.muted}>Primero agrega una asignatura al horario.</Text> : workspace.subjects.map(subject => <Pressable key={subject.id} onPress={() => openMaterials(subject)} style={s.subjectRow}><View style={s.subjectMark}><View style={s.subjectMarkLine}/><View style={s.subjectMarkDot}/></View><View style={s.flex}><Text style={s.subjectTitle}>{subject.name}</Text><Text numberOfLines={2} style={s.meta}>{subject.items.length ? subject.items.map(item => item.name).join(' · ') : 'Sin materiales habituales'}</Text></View><Text style={s.chevron}>›</Text></Pressable>)}
         </View>
       </> : null}
     </ScrollView>
+
+    <Modal visible={showSpecial} transparent animationType="slide" onRequestClose={() => setShowSpecial(false)}><KeyboardAvoidingView style={s.sheetHost} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Pressable style={s.scrim} onPress={() => setShowSpecial(false)}/><View style={s.sheet}><View style={s.sheetHandle}/><Text style={s.sheetKicker}>ESPECIAL PARA ESTE DÍA</Text><Text style={s.sheetTitle}>¿Qué te pidieron llevar?</Text><Text style={s.sheetHelp}>Escribe uno o varios materiales. Puedes separarlos por coma.</Text><TextInput style={[s.input,s.multiInput]} value={specialText} onChangeText={setSpecialText} multiline placeholder="Ej.: cartulina, pegamento, una foto" placeholderTextColor="#A59689"/><Pressable disabled={!specialText.trim()||busyKey==='special'} onPress={() => void saveSpecial()} style={[s.primary,(!specialText.trim()||busyKey==='special')&&s.disabled]}><Text style={s.primaryText}>{busyKey==='special'?'Guardando…':'Agregar a la mochila'}</Text></Pressable></View></KeyboardAvoidingView></Modal>
+
+    <Modal visible={showKit} transparent animationType="slide" onRequestClose={() => setShowKit(false)}><KeyboardAvoidingView style={s.sheetHost} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Pressable style={s.scrim} onPress={() => setShowKit(false)}/><View style={s.sheet}><View style={s.sheetHandle}/><Text style={s.sheetKicker}>ESTUCHE</Text><Text style={s.sheetTitle}>¿Qué debe tener siempre?</Text><Text style={s.sheetHelp}>After mostrará “Estuche” una sola vez. Esta lista sirve como recordatorio cuando quieran revisarlo.</Text><TextInput style={[s.input,s.multiInput]} value={kitText} onChangeText={setKitText} multiline placeholder="Lápiz grafito, goma, sacapuntas, lápices de colores, regla" placeholderTextColor="#A59689"/><Pressable disabled={busyKey==='kit'} onPress={() => void saveKit()} style={[s.primary,busyKey==='kit'&&s.disabled]}><Text style={s.primaryText}>{busyKey==='kit'?'Guardando…':'Guardar estuche'}</Text></Pressable></View></KeyboardAvoidingView></Modal>
 
     <Modal visible={showEntryEditor} transparent animationType="slide" onRequestClose={() => setShowEntryEditor(false)}>
       <KeyboardAvoidingView style={s.sheetHost} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
