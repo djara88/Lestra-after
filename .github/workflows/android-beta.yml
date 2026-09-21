@@ -3,8 +3,9 @@ name: Android Beta APK
 on:
   push:
     branches:
-      - stabilize/after-0.5.8
-      - fix/after-beta-0.5.8-google-oauth
+      - stabilize/after-0.5.9
+      - fix/after-beta-0.5.9-google-oauth
+      - fix/after-beta-0.5.7-google-oauth
   workflow_dispatch:
 
 permissions:
@@ -66,7 +67,7 @@ jobs:
       - name: Keep APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Lestra-After-Beta-0.5.8
+          name: Lestra-After-Beta-0.5.9
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
@@ -74,9 +75,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.8.apk
-          if gh release view after-beta-0.5.8 >/dev/null 2>&1; then
-            gh release upload after-beta-0.5.8 Lestra-After-Beta-0.5.8.apk --clobber
+          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.9.apk
+          if gh release view after-beta-0.5.9 >/dev/null 2>&1; then
+            gh release upload after-beta-0.5.9 Lestra-After-Beta-0.5.9.apk --clobber
           else
-            gh release create after-beta-0.5.8 Lestra-After-Beta-0.5.8.apk               --title "Lestra After Beta 0.5.8"               --notes "OCR estructural de calendarios, importación OCR de horario y Mochila conectada, conservando la corrección Google OAuth."               --prerelease               --target "$GITHUB_SHA"
+            gh release create after-beta-0.5.9 Lestra-After-Beta-0.5.9.apk               --title "Lestra After Beta 0.5.9"               --notes "Calendario semana/mes/año, Mochila infantil, estuche global, materiales especiales manuales y OCR de horario."               --prerelease               --target "$GITHUB_SHA"
           fi
