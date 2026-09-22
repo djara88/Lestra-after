@@ -23,6 +23,8 @@ export type ScheduleEntry = {
 export type BackpackSubject = {
   id: string;
   name: string;
+  needs_notebook: boolean;
+  needs_book: boolean;
   items: Array<{ id: string; name: string }>;
 };
 
@@ -159,3 +161,14 @@ export function shiftDate(dateIso: string, days: number) {
 export async function saveDailyBackpackItem(studentId:string,targetDate:string,name:string,subjectId?:string|null){const {data,error}=await supabase.rpc('after_save_backpack_daily_item',{p_item_id:null,p_student_id:studentId,p_target_date:targetDate,p_name:name.trim(),p_subject_id:subjectId||null});if(error)throw new BackpackError('No pudimos agregar ese material.');return data as string;}
 export async function deleteDailyBackpackItem(itemId:string){const {error}=await supabase.rpc('after_delete_backpack_daily_item',{p_item_id:itemId});if(error)throw new BackpackError('No pudimos eliminar ese material.');}
 export async function setBackpackKitItems(studentId:string,items:string[]){const {error}=await supabase.rpc('after_set_backpack_kit_items',{p_student_id:studentId,p_items:items});if(error)throw new BackpackError('No pudimos guardar el estuche.');}
+
+export async function getBackpackMemberRole(): Promise<string> {
+  const { data, error } = await supabase.rpc('after_my_context');
+  if (error) throw new BackpackError('No pudimos validar el perfil.');
+  return String(((data ?? {}) as { member_role?: string }).member_role ?? '');
+}
+
+export async function setSubjectPackDefaults(studentId:string,subjectId:string,needsNotebook:boolean,needsBook:boolean):Promise<void>{
+  const {error}=await supabase.rpc('after_set_subject_pack_defaults',{p_student_id:studentId,p_subject_id:subjectId,p_needs_notebook:needsNotebook,p_needs_book:needsBook});
+  if(error)throw new BackpackError('No pudimos guardar cuaderno y libro.');
+}
