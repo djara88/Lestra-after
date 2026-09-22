@@ -1,117 +1,93 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router } from 'expo-router';
-import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { runLocalOcr } from '@/lib/localOcr';
+import { ScheduleField } from '@/components/ScheduleField';
 
-type Context = { family_id?: string; students?: Array<{ id:string; first_name:string; preferred_name?:string|null }> };
-type Mode = 'academic'|'event';
-type SourceDocument = { id:string; student_id:string|null; student_name:string|null; original_name:string; mime_type:string; size_bytes:number; processing_status:string; created_at:string };
+type Child={id:string;first_name:string;preferred_name?:string|null;relationship_label?:string|null};
+type Context={family_id?:string;students?:Child[]};
+type Mode='academic'|'event';
+type SourceDocument={id:string;student_id:string|null;student_name:string|null;original_name:string;mime_type:string;size_bytes:number;processing_status:string;ocr_error?:string|null;candidate_count?:number;created_at:string};
+type Candidate={id:string;candidate_type:'academic_item'|'calendar_event'|'material'|'payment'|'note';title:string;description?:string|null;starts_at?:string|null;due_at?:string|null;confidence?:number|null;status:string;payload?:{academic_type?:string;subject?:string;priority?:string;materials?:string[]}};
+type Review={document?:{id:string;original_name:string;processing_status:string;ocr_text?:string|null;ocr_error?:string|null};candidates?:Candidate[]};
 
 const titleSchema=z.string().trim().min(1).max(180);
-const dateSchema=z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const timeSchema=z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
-const academicTypes=[['task','Tarea'],['test','Prueba'],['exam','Examen'],['project','Proyecto'],['material','Material']] as const;
+const academicTypes=[['task','Tarea'],['test','Prueba'],['exam','Examen'],['project','Proyecto']] as const;
 const eventCategories=[['sport','Deporte'],['health','Salud'],['social','Social'],['family','Familia'],['school','Colegio'],['study','Estudio'],['other','Otro']] as const;
-const allowedMime=new Set(['application/pdf','image/jpeg','image/png','image/webp']);
+const priorities=[['low','Baja'],['normal','Normal'],['high','Alta'],['urgent','Urgente']] as const;
 const MAX_FILE_BYTES=8*1024*1024;
 
-function localIso(date:string,time:string){const d=new Date(`${date}T${time}:00`);return Number.isNaN(d.getTime())?null:d.toISOString();}
-function prettyBytes(value:number){if(value<1024)return `${value} B`; if(value<1024*1024)return `${Math.round(value/1024)} KB`; return `${(value/(1024*1024)).toFixed(1)} MB`;}
 function safeFileName(name:string){return name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]/g,'_').replace(/_+/g,'_').slice(-120)||'documento';}
+function prettyBytes(value:number){if(value<1024)return `${value} B`;if(value<1024*1024)return `${Math.round(value/1024)} KB`;return `${(value/(1024*1024)).toFixed(1)} MB`;}
+function candidateLabel(candidate:Candidate){if(candidate.candidate_type==='calendar_event')return 'Evento';if(candidate.candidate_type==='material')return 'Material';if(candidate.candidate_type==='payment')return 'Pago / cobro';if(candidate.candidate_type==='note')return 'Aviso';const labels:Record<string,string>={task:'Tarea',test:'Prueba',exam:'Examen',project:'Proyecto',material:'Material'};return labels[candidate.payload?.academic_type??'']??'Pendiente escolar';}
+function candidateDate(candidate:Candidate){const raw=candidate.due_at||candidate.starts_at;if(!raw)return 'Fecha por confirmar';const value=new Date(raw);return Number.isNaN(value.getTime())?'Fecha por confirmar':value.toLocaleString('es-CL',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});}
+function defaultWhen(){const d=new Date();d.setDate(d.getDate()+1);d.setHours(18,0,0,0);return d;}
 
 export default function Add(){
-  const [context,setContext]=useState<Context>({}); const [mode,setMode]=useState<Mode>('academic'); const [busy,setBusy]=useState(false); const [uploading,setUploading]=useState(false); const [deletingId,setDeletingId]=useState<string|null>(null);
-  const [studentId,setStudentId]=useState(''); const [title,setTitle]=useState(''); const [date,setDate]=useState(''); const [time,setTime]=useState('18:00'); const [detail,setDetail]=useState('');
-  const [academicType,setAcademicType]=useState('task'); const [category,setCategory]=useState('sport'); const [documents,setDocuments]=useState<SourceDocument[]>([]);
+  const [context,setContext]=useState<Context>({});const [childId,setChildId]=useState('');const [documents,setDocuments]=useState<SourceDocument[]>([]);const [review,setReview]=useState<Review|null>(null);
+  const [processing,setProcessing]=useState(false);const [busy,setBusy]=useState(false);const [candidateBusyId,setCandidateBusyId]=useState<string|null>(null);const [deletingId,setDeletingId]=useState<string|null>(null);
+  const [mode,setMode]=useState<Mode>('academic');const [title,setTitle]=useState('');const [detail,setDetail]=useState('');const [subject,setSubject]=useState('');const [materials,setMaterials]=useState('');const [priority,setPriority]=useState('normal');const [academicType,setAcademicType]=useState('task');const [category,setCategory]=useState('school');const [when,setWhen]=useState(defaultWhen);
+  const children=context.students??[];const selected=useMemo(()=>children.find(child=>child.id===childId),[children,childId]);
+
   useEffect(()=>{void loadContext();void loadDocuments();},[]);
-  const students=context.students??[]; const selected=useMemo(()=>students.find(s=>s.id===studentId),[students,studentId]);
-
-  async function loadContext(){const {data}=await supabase.rpc('after_my_context');const ctx=(data??{}) as Context;setContext(ctx);const first=ctx.students?.[0];if(first)setStudentId(current=>current||first.id);}
+  async function loadContext(){const {data}=await supabase.rpc('after_my_context');const next=(data??{}) as Context;setContext(next);const first=next.students?.[0];if(first)setChildId(current=>current||first.id);}
   async function loadDocuments(){const {data,error}=await supabase.rpc('after_source_documents');if(!error)setDocuments((data??[]) as SourceDocument[]);}
+  async function openReview(documentId:string){const {data,error}=await supabase.rpc('after_document_review',{p_document_id:documentId});if(error)return Alert.alert('No pudimos abrir la revisión','Vuelve a intentar.');setReview((data??{}) as Review);}
 
-  async function uploadDocument(){
-    if(!context.family_id||!studentId)return Alert.alert('Selecciona un alumno','El documento debe quedar asociado a una familia y a un alumno.');
-    const picked=await DocumentPicker.getDocumentAsync({type:['application/pdf','image/jpeg','image/png','image/webp'],copyToCacheDirectory:true,multiple:false});
-    if(picked.canceled||!picked.assets[0])return;
-    const asset=picked.assets[0]; const mime=asset.mimeType||''; const size=asset.size??0;
-    if(!allowedMime.has(mime))return Alert.alert('Formato no permitido','Puedes adjuntar PDF, JPG, PNG o WEBP.');
-    if(size<=0||size>MAX_FILE_BYTES)return Alert.alert('Archivo demasiado grande','El máximo permitido es 8 MB.');
-
-    setUploading(true);
-    let storagePath:string|null=null;
+  async function registerLocalResult(uri:string,name:string,mimeType:string,sizeHint?:number){
+    if(!context.family_id||!childId)return Alert.alert('¿Para quién es?','Elige primero el niño o persona a quien corresponde este documento.');
+    setProcessing(true);
+    let storagePath:string|null=null;let registered=false;
     try{
-      const {data:{user},error:userError}=await supabase.auth.getUser();
-      if(userError||!user)throw new Error('session');
-      const file=new File(asset.uri); const bytes=await file.arrayBuffer();
-      if(bytes.byteLength!==size&&bytes.byteLength>MAX_FILE_BYTES)throw new Error('size');
-      storagePath=`${context.family_id}/${user.id}/${Crypto.randomUUID()}-${safeFileName(asset.name)}`;
-      const {error:uploadError}=await supabase.storage.from('after-source-documents').upload(storagePath,bytes,{contentType:mime,upsert:false,cacheControl:'3600'});
-      if(uploadError)throw uploadError;
-      const {error:registerError}=await supabase.rpc('after_register_source_document',{p_family_id:context.family_id,p_student_id:studentId,p_storage_path:storagePath,p_original_name:asset.name,p_mime_type:mime,p_size_bytes:size});
-      if(registerError){await supabase.storage.from('after-source-documents').remove([storagePath]);throw registerError;}
-      await loadDocuments();
-      Alert.alert('Documento protegido','Se guardó en almacenamiento privado. Todavía no se analiza automáticamente: primero validaremos el flujo con material real.');
-    }catch{
-      if(storagePath)await supabase.storage.from('after-source-documents').remove([storagePath]);
-      Alert.alert('No pudimos subir el documento','Revisa tu sesión, el formato y el tamaño e intenta nuevamente.');
-    }finally{setUploading(false);}
+      const result=await runLocalOcr(uri,mimeType);
+      const file=new File(uri);const bytes=await file.arrayBuffer();const size=sizeHint&&sizeHint>0?sizeHint:bytes.byteLength;
+      if(bytes.byteLength<=0||bytes.byteLength>MAX_FILE_BYTES)throw new Error('El archivo supera el máximo de 8 MB.');
+      const {data:{user},error:userError}=await supabase.auth.getUser();if(userError||!user)throw new Error('Tu sesión ya no está disponible.');
+      storagePath=`${context.family_id}/${user.id}/${Crypto.randomUUID()}-${safeFileName(name)}`;
+      const {error:uploadError}=await supabase.storage.from('after-source-documents').upload(storagePath,bytes,{contentType:mimeType,upsert:false,cacheControl:'3600'});if(uploadError)throw uploadError;
+      const {data:documentId,error:registerError}=await supabase.rpc('after_register_source_document',{p_family_id:context.family_id,p_student_id:childId,p_storage_path:storagePath,p_original_name:name,p_mime_type:mimeType,p_size_bytes:size});if(registerError||!documentId)throw registerError??new Error('No pudimos registrar el documento.');registered=true;
+      const candidates=result.candidates.map(candidate=>({candidate_type:candidate.candidate_type,title:candidate.title,description:candidate.description??null,starts_at:candidate.starts_at??null,due_at:candidate.due_at??null,confidence:candidate.confidence??null,academic_type:candidate.academic_type??null,subject:candidate.subject??null,priority:candidate.priority??'normal',materials:candidate.materials??[]}));
+      const {data:count,error:saveError}=await supabase.rpc('after_save_ocr_result',{p_document_id:String(documentId),p_ocr_text:result.text,p_provider:result.provider,p_candidates:candidates});if(saveError)throw saveError;
+      await loadDocuments();await openReview(String(documentId));
+      const pageNote=result.pageCount>result.processedPages?` Leímos las primeras ${result.processedPages} de ${result.pageCount} páginas.`:'';
+      Alert.alert('Listo para revisar',`After leyó el documento en tu teléfono y encontró ${Number(count??0)} elemento(s).${pageNote}`);
+    }catch(error){if(storagePath&&!registered)await supabase.storage.from('after-source-documents').remove([storagePath]);Alert.alert('No pudimos leerlo',error instanceof Error?error.message:'Intenta con una foto más clara o con otro archivo.');}
+    finally{setProcessing(false);}
   }
 
-  async function deleteDocument(documentId:string){
-    if(deletingId)return;
-    setDeletingId(documentId);
-    try{
-      const {data:path,error:pathError}=await supabase.rpc('after_get_source_document_delete_path',{p_document_id:documentId});
-      if(pathError||typeof path!=='string'||!path)throw new Error('not_allowed');
-      const {error:storageError}=await supabase.storage.from('after-source-documents').remove([path]);
-      if(storageError)throw storageError;
-      const {data:deleted,error:deleteError}=await supabase.rpc('after_delete_source_document',{p_document_id:documentId,p_storage_path:path});
-      if(deleteError||deleted!==true)throw new Error('metadata');
-      await loadDocuments();
-    }catch{
-      Alert.alert('No pudimos eliminar el documento','Solo quien lo subió puede eliminarlo. Si el archivo ya fue retirado pero el registro permanece, vuelve a intentar.');
-    }finally{setDeletingId(null);}
-  }
+  async function takePhoto(){const permission=await ImagePicker.requestCameraPermissionsAsync();if(!permission.granted)return Alert.alert('Necesitamos la cámara','Autoriza la cámara para fotografiar lo que mandó el colegio.');const result=await ImagePicker.launchCameraAsync({mediaTypes:['images'],quality:.9});if(result.canceled||!result.assets[0])return;const asset=result.assets[0];await registerLocalResult(asset.uri,asset.fileName||`foto-${Date.now()}.jpg`,asset.mimeType||'image/jpeg',asset.fileSize);}
+  async function pickPhoto(){const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],quality:1});if(result.canceled||!result.assets[0])return;const asset=result.assets[0];await registerLocalResult(asset.uri,asset.fileName||`imagen-${Date.now()}.jpg`,asset.mimeType||'image/jpeg',asset.fileSize);}
+  async function pickPdf(){const result=await DocumentPicker.getDocumentAsync({type:'application/pdf',copyToCacheDirectory:true,multiple:false});if(result.canceled||!result.assets[0])return;const asset=result.assets[0];await registerLocalResult(asset.uri,asset.name,'application/pdf',asset.size);}
 
-  function confirmDelete(doc:SourceDocument){
-    Alert.alert('Eliminar documento','Se eliminará el archivo privado y su registro de After. Esta acción no se puede deshacer.',[
-      {text:'Cancelar',style:'cancel'},
-      {text:'Eliminar',style:'destructive',onPress:()=>void deleteDocument(doc.id)},
-    ]);
-  }
+  async function resolveCandidate(candidate:Candidate,action:'accept'|'reject'){if(candidateBusyId)return;setCandidateBusyId(candidate.id);const rpc=action==='accept'?'after_accept_document_candidate':'after_reject_document_candidate';const {error}=await supabase.rpc(rpc,{p_candidate_id:candidate.id});setCandidateBusyId(null);if(error){const missing=String(error.message??'').includes('candidate_date_required');return Alert.alert('Revisa este dato',missing?'No encontramos una fecha suficientemente clara. Agrégalo manualmente con el selector de fecha.':'No pudimos guardar esta decisión.');}if(review?.document?.id)await openReview(review.document.id);await loadDocuments();}
+  async function deleteDocument(documentId:string){if(deletingId)return;setDeletingId(documentId);try{const {data:path,error:pathError}=await supabase.rpc('after_get_source_document_delete_path',{p_document_id:documentId});if(pathError||typeof path!=='string'||!path)throw new Error();const {error:storageError}=await supabase.storage.from('after-source-documents').remove([path]);if(storageError)throw storageError;const {data:deleted,error:deleteError}=await supabase.rpc('after_delete_source_document',{p_document_id:documentId,p_storage_path:path});if(deleteError||deleted!==true)throw new Error();if(review?.document?.id===documentId)setReview(null);await loadDocuments();}catch{Alert.alert('No pudimos eliminarlo','Vuelve a intentar.');}finally{setDeletingId(null);}}
+  function confirmDelete(document:SourceDocument){Alert.alert('Eliminar documento','Se eliminará el archivo y su lectura.',[{text:'Cancelar',style:'cancel'},{text:'Eliminar',style:'destructive',onPress:()=>void deleteDocument(document.id)}]);}
 
-  async function save(){
-    const parsedTitle=titleSchema.safeParse(title); const parsedDate=dateSchema.safeParse(date); const parsedTime=timeSchema.safeParse(time);
-    if(!studentId||!parsedTitle.success||!parsedDate.success||!parsedTime.success) return Alert.alert('Revisa los datos','Selecciona un alumno, título, fecha y hora válidos. Usa fecha AAAA-MM-DD y hora HH:MM.');
-    const when=localIso(parsedDate.data,parsedTime.data); if(!when)return Alert.alert('Fecha inválida','Revisa la fecha y hora.');
-    setBusy(true);
-    const result=mode==='academic'
-      ? await supabase.rpc('after_create_academic_item',{p_student_id:studentId,p_type:academicType,p_title:parsedTitle.data,p_description:detail.trim()||null,p_due_at:when,p_priority:'normal'})
-      : await supabase.rpc('after_create_calendar_event',{p_family_id:context.family_id,p_student_id:studentId,p_category:category,p_title:parsedTitle.data,p_starts_at:when,p_ends_at:null,p_location:null,p_notes:detail.trim()||null,p_sensitivity:category==='health'?'private':'normal'});
-    setBusy(false);
-    if(result.error)return Alert.alert('No pudimos guardar','Tu sesión o permisos no permiten esta operación. Intenta nuevamente.');
-    setTitle('');setDate('');setDetail('');Alert.alert('Guardado','El compromiso quedó agregado a la agenda.',[{text:'Ver agenda',onPress:()=>router.push('/(app)/agenda')},{text:'Agregar otro'}]);
-  }
+  async function saveManual(){const parsed=titleSchema.safeParse(title);if(!childId||!parsed.success)return Alert.alert('Falta información','Elige a quién corresponde y escribe un título.');setBusy(true);const materialList=materials.split(',').map(value=>value.trim()).filter(Boolean).slice(0,20);const result=mode==='academic'?await supabase.rpc('after_create_school_item',{p_student_id:childId,p_type:academicType,p_title:parsed.data,p_description:detail.trim()||null,p_due_at:when.toISOString(),p_priority:priority,p_subject_name:subject.trim()||null,p_materials:materialList,p_source_document_id:null}):await supabase.rpc('after_create_calendar_event',{p_family_id:context.family_id,p_student_id:childId,p_category:category,p_title:parsed.data,p_starts_at:when.toISOString(),p_ends_at:null,p_location:null,p_notes:detail.trim()||null,p_sensitivity:category==='health'?'private':'normal'});setBusy(false);if(result.error)return Alert.alert('No pudimos guardar','Revisa tu sesión e intenta nuevamente.');setTitle('');setDetail('');setSubject('');setMaterials('');setPriority('normal');setWhen(defaultWhen());Alert.alert('Guardado','Ya quedó incorporado a After.');}
 
   return <SafeAreaView style={s.safe}><ScrollView contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
-    <Text style={s.kicker}>AGREGAR INFORMACIÓN</Text><Text style={s.title}>¿Qué necesitas recordar?</Text><Text style={s.copy}>Registra un compromiso manualmente o guarda de forma privada una circular, PDF o imagen para revisarla dentro de After.</Text>
-    <Text style={s.label}>Alumno</Text><View style={s.chips}>{students.map(st=><Pressable key={st.id} onPress={()=>setStudentId(st.id)} style={[s.chip,studentId===st.id&&s.chipActive]}><Text style={[s.chipText,studentId===st.id&&s.chipTextActive]}>{st.preferred_name||st.first_name}</Text></Pressable>)}</View>
+    <Text style={s.eyebrow}>DEL COLEGIO A AFTER</Text><Text style={s.title}>Saca una foto. After hace el resto. 📚</Text><Text style={s.copy}>La lectura OCR ocurre en este teléfono, sin enviar la imagen a OpenAI. Tú siempre revisas antes de guardar.</Text>
 
-    <View style={s.documentCard}><View style={{flex:1}}><Text style={s.heading}>Documento o imagen</Text><Text style={s.muted}>PDF, JPG, PNG o WEBP · máximo 8 MB · almacenamiento privado.</Text></View><Pressable disabled={uploading||!selected} onPress={uploadDocument} style={[s.secondaryButton,(uploading||!selected)&&s.disabled]}><Text style={s.secondaryText}>{uploading?'Subiendo…':'Adjuntar'}</Text></Pressable></View>
-    {documents.length>0?<View style={s.history}><Text style={s.heading}>Subidos recientemente</Text>{documents.slice(0,5).map(doc=><View key={doc.id} style={s.docRow}><View style={{flex:1}}><Text numberOfLines={1} style={s.docName}>{doc.original_name}</Text><Text style={s.meta}>{doc.student_name||'Alumno'} · {prettyBytes(Number(doc.size_bytes))}</Text></View><View style={s.docActions}><Text style={s.status}>Protegido</Text><Pressable disabled={deletingId===doc.id} onPress={()=>confirmDelete(doc)}><Text style={s.deleteText}>{deletingId===doc.id?'Eliminando…':'Eliminar'}</Text></Pressable></View></View>)}</View>:null}
+    <Text style={s.label}>¿Para quién?</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>{children.map(child=><Pressable key={child.id} onPress={()=>setChildId(child.id)} style={[s.chip,childId===child.id&&s.chipActive]}><Text style={[s.chipText,childId===child.id&&s.chipTextActive]}>{child.preferred_name||child.first_name}</Text></Pressable>)}</ScrollView>
 
-    <View style={s.segment}><Pressable onPress={()=>setMode('academic')} style={[s.segmentButton,mode==='academic'&&s.segmentActive]}><Text style={[s.segmentText,mode==='academic'&&s.segmentTextActive]}>Estudio</Text></Pressable><Pressable onPress={()=>setMode('event')} style={[s.segmentButton,mode==='event'&&s.segmentActive]}><Text style={[s.segmentText,mode==='event'&&s.segmentTextActive]}>Actividad</Text></Pressable></View>
-    <Text style={s.label}>{mode==='academic'?'Tipo':'Categoría'}</Text><View style={s.chips}>{(mode==='academic'?academicTypes:eventCategories).map(([value,label])=><Pressable key={value} onPress={()=>mode==='academic'?setAcademicType(value):setCategory(value)} style={[s.chip,(mode==='academic'?academicType:category)===value&&s.chipActive]}><Text style={[s.chipText,(mode==='academic'?academicType:category)===value&&s.chipTextActive]}>{label}</Text></Pressable>)}</View>
-    <TextInput style={s.input} value={title} onChangeText={setTitle} maxLength={180} placeholder={mode==='academic'?'Ej. Prueba de Ciencias':'Ej. Entrenamiento de fútbol'}/>
-    <View style={s.row}><TextInput style={[s.input,s.flex]} value={date} onChangeText={setDate} placeholder="AAAA-MM-DD" keyboardType="numbers-and-punctuation"/><TextInput style={[s.input,s.time]} value={time} onChangeText={setTime} placeholder="HH:MM" keyboardType="numbers-and-punctuation"/></View>
-    <TextInput style={[s.input,s.notes]} value={detail} onChangeText={setDetail} maxLength={2000} multiline placeholder="Detalle opcional"/>
-    {category==='health'&&mode==='event'?<Text style={s.private}>Los eventos de salud se guardan como privados por defecto.</Text>:null}
-    <Pressable disabled={busy||!selected} onPress={save} style={[s.button,(busy||!selected)&&s.disabled]}><Text style={s.buttonText}>{busy?'Guardando…':'Guardar en After'}</Text></Pressable>
+    <View style={s.importCard}><Text style={s.importEmoji}>📷</Text><Text style={s.heading}>¿Qué mandó el colegio?</Text><Text style={s.muted}>Foto, imagen o PDF. Primero lo leemos de forma local; después guardamos el original privado y lo que confirmes.</Text><View style={s.importActions}><Pressable disabled={processing||!selected} onPress={()=>void takePhoto()} style={[s.bigAction,processing&&s.disabled]}><Text style={s.bigActionEmoji}>📸</Text><Text style={s.bigActionText}>{processing?'Leyendo…':'Sacar foto'}</Text></Pressable><Pressable disabled={processing||!selected} onPress={()=>void pickPhoto()} style={[s.smallAction,processing&&s.disabled]}><Text style={s.smallActionText}>🖼️ Elegir foto</Text></Pressable><Pressable disabled={processing||!selected} onPress={()=>void pickPdf()} style={[s.smallAction,processing&&s.disabled]}><Text style={s.smallActionText}>📄 Subir PDF</Text></Pressable></View><View style={s.privateRow}><Text style={s.privateIcon}>🔒</Text><Text style={s.privateText}>OCR en el dispositivo · revisión humana obligatoria · máximo 8 MB</Text></View></View>
+
+    {review?.document?<View style={s.review}><Text style={s.eyebrow}>LO QUE ENCONTRAMOS</Text><Text style={s.reviewTitle}>{review.document.original_name}</Text>{review.document.ocr_text?<Text numberOfLines={8} style={s.ocrText}>{review.document.ocr_text}</Text>:null}{(review.candidates??[]).length===0?<Text style={s.muted}>Encontramos texto, pero no algo suficientemente claro para crear automáticamente.</Text>:(review.candidates??[]).map(candidate=><View key={candidate.id} style={s.candidate}><View style={s.candidateHead}><Text style={s.candidateType}>{candidateLabel(candidate)}</Text><Text style={s.confidence}>{candidate.confidence==null?'':`${Math.round(Number(candidate.confidence)*100)}%`}</Text></View><Text style={s.candidateTitle}>{candidate.title}</Text><Text style={s.meta}>{candidateDate(candidate)}{candidate.payload?.subject?` · ${candidate.payload.subject}`:''}</Text>{candidate.description?<Text style={s.candidateCopy}>{candidate.description}</Text>:null}{candidate.payload?.materials?.length?<Text style={s.materialText}>🎒 Llevar: {candidate.payload.materials.join(', ')}</Text>:null}{candidate.status==='pending'?<View style={s.actions}>{candidate.candidate_type==='academic_item'||candidate.candidate_type==='calendar_event'||candidate.candidate_type==='material'?<Pressable disabled={candidateBusyId===candidate.id} onPress={()=>void resolveCandidate(candidate,'accept')} style={s.confirm}><Text style={s.confirmText}>{candidateBusyId===candidate.id?'Guardando…':'✓ Confirmar'}</Text></Pressable>:<Text style={s.muted}>Este aviso queda para revisión manual.</Text>}<Pressable disabled={candidateBusyId===candidate.id} onPress={()=>void resolveCandidate(candidate,'reject')} style={s.discard}><Text style={s.discardText}>Descartar</Text></Pressable></View>:<Text style={s.resolved}>{candidate.status==='accepted'?'✓ Guardado en After':'Descartado'}</Text>}</View>)}</View>:null}
+
+    {documents.length>0?<View style={s.recent}><View style={s.sectionHead}><Text style={s.heading}>Documentos recientes</Text><Text style={s.count}>{documents.length}</Text></View>{documents.slice(0,4).map(document=><View key={document.id} style={s.docRow}><View style={s.docIcon}><Text>📄</Text></View><View style={s.flex}><Text numberOfLines={1} style={s.docName}>{document.original_name}</Text><Text style={s.meta}>{document.student_name||'Niño/a'} · {prettyBytes(Number(document.size_bytes))}</Text></View>{document.processing_status==='ready'||document.processing_status==='reviewed'?<Pressable onPress={()=>void openReview(document.id)} style={s.linkButton}><Text style={s.linkText}>Revisar</Text></Pressable>:null}<Pressable disabled={deletingId===document.id} onPress={()=>confirmDelete(document)}><Text style={s.deleteText}>{deletingId===document.id?'…':'×'}</Text></Pressable></View>)}</View>:null}
+
+    <View style={s.divider}/><Text style={s.heading}>¿Prefieres agregarlo tú?</Text><Text style={s.muted}>También puedes crear algo manualmente, sin escribir fecha ni hora.</Text>
+    <View style={s.segment}><Pressable onPress={()=>setMode('academic')} style={[s.segmentButton,mode==='academic'&&s.segmentActive]}><Text style={[s.segmentText,mode==='academic'&&s.segmentTextActive]}>Colegio</Text></Pressable><Pressable onPress={()=>setMode('event')} style={[s.segmentButton,mode==='event'&&s.segmentActive]}><Text style={[s.segmentText,mode==='event'&&s.segmentTextActive]}>Actividad</Text></Pressable></View>
+    <Text style={s.label}>{mode==='academic'?'¿Qué es?':'Tipo de actividad'}</Text><View style={s.wrapChips}>{(mode==='academic'?academicTypes:eventCategories).map(([value,label])=>{const active=(mode==='academic'?academicType:category)===value;return <Pressable key={value} onPress={()=>mode==='academic'?setAcademicType(value):setCategory(value)} style={[s.chip,active&&s.chipActive]}><Text style={[s.chipText,active&&s.chipTextActive]}>{label}</Text></Pressable>;})}</View>
+    <TextInput style={s.input} value={title} onChangeText={setTitle} maxLength={180} placeholder={mode==='academic'?'Ej. Prueba de Ciencias':'Ej. Entrenamiento'} placeholderTextColor="#A59586"/>
+    {mode==='academic'?<><TextInput style={s.input} value={subject} onChangeText={setSubject} maxLength={100} placeholder="Asignatura (opcional)" placeholderTextColor="#A59586"/><TextInput style={s.input} value={materials} onChangeText={setMaterials} maxLength={600} placeholder="Materiales, separados por coma" placeholderTextColor="#A59586"/><Text style={s.label}>Prioridad</Text><View style={s.wrapChips}>{priorities.map(([value,label])=><Pressable key={value} onPress={()=>setPriority(value)} style={[s.chip,priority===value&&s.chipActive]}><Text style={[s.chipText,priority===value&&s.chipTextActive]}>{label}</Text></Pressable>)}</View></>:null}
+    <ScheduleField value={when} onChange={setWhen}/><TextInput style={[s.input,s.notes]} value={detail} onChangeText={setDetail} maxLength={2000} multiline placeholder="Detalle opcional" placeholderTextColor="#A59586"/>{category==='health'&&mode==='event'?<Text style={s.health}>💛 Los datos de salud se guardan como privados por defecto.</Text>:null}<Pressable disabled={busy||!selected} onPress={()=>void saveManual()} style={[s.save,busy&&s.disabled]}><Text style={s.saveText}>{busy?'Guardando…':'Guardar en After'}</Text></Pressable>
   </ScrollView></SafeAreaView>;
 }
 
-const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#F7F7F5'},body:{padding:24,gap:12},kicker:{fontSize:12,fontWeight:'800',letterSpacing:1.3,color:'#777'},title:{fontSize:32,lineHeight:38,fontWeight:'800'},copy:{fontSize:15,lineHeight:22,color:'#5C626D',marginBottom:8},heading:{fontSize:16,fontWeight:'800'},muted:{fontSize:12,lineHeight:18,color:'#6D737C'},documentCard:{flexDirection:'row',gap:12,alignItems:'center',backgroundColor:'#FFF',borderWidth:1,borderColor:'#E0E3DF',borderRadius:17,padding:15},secondaryButton:{paddingVertical:10,paddingHorizontal:14,borderRadius:12,backgroundColor:'#111318'},secondaryText:{color:'#FFF',fontWeight:'800',fontSize:13},history:{backgroundColor:'#FFF',borderWidth:1,borderColor:'#E0E3DF',borderRadius:17,padding:15,gap:4},docRow:{flexDirection:'row',alignItems:'center',gap:10,paddingVertical:10,borderTopWidth:1,borderTopColor:'#EEEFEA'},docName:{fontSize:14,fontWeight:'800'},meta:{fontSize:11,color:'#747B86',marginTop:2},docActions:{alignItems:'flex-end',gap:5},status:{fontSize:11,fontWeight:'800',color:'#46644C'},deleteText:{fontSize:11,fontWeight:'800',color:'#A64242'},segment:{flexDirection:'row',backgroundColor:'#E9EAE7',padding:4,borderRadius:14,marginTop:4},segmentButton:{flex:1,padding:11,alignItems:'center',borderRadius:11},segmentActive:{backgroundColor:'#FFF'},segmentText:{fontWeight:'700',color:'#6D737C'},segmentTextActive:{color:'#111318'},label:{fontSize:13,fontWeight:'800',marginTop:6},chips:{flexDirection:'row',flexWrap:'wrap',gap:8},chip:{paddingVertical:9,paddingHorizontal:12,borderRadius:999,borderWidth:1,borderColor:'#D9DBD7',backgroundColor:'#FFF'},chipActive:{backgroundColor:'#111318',borderColor:'#111318'},chipText:{fontSize:13,fontWeight:'700',color:'#4F5660'},chipTextActive:{color:'#FFF'},input:{backgroundColor:'#FFF',borderWidth:1,borderColor:'#E0E3DF',borderRadius:15,padding:15,fontSize:16},row:{flexDirection:'row',gap:10},flex:{flex:1},time:{width:105},notes:{minHeight:92,textAlignVertical:'top'},private:{fontSize:12,lineHeight:18,color:'#6E5560'},button:{backgroundColor:'#111318',borderRadius:16,padding:17,alignItems:'center',marginTop:4},buttonText:{color:'#FFF',fontSize:16,fontWeight:'800'},disabled:{opacity:.45}});
+const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#FFF8F1'},body:{paddingHorizontal:18,paddingTop:18,paddingBottom:64,gap:13},eyebrow:{fontSize:10.5,fontWeight:'900',letterSpacing:1.15,color:'#A17152'},title:{fontSize:31,lineHeight:36,fontWeight:'900',letterSpacing:-.8,color:'#2B2926'},copy:{fontSize:15,lineHeight:22,color:'#71665C'},label:{fontSize:13,fontWeight:'900',color:'#655A50',marginTop:3},chips:{gap:8,paddingVertical:2},wrapChips:{flexDirection:'row',flexWrap:'wrap',gap:8},chip:{paddingVertical:9,paddingHorizontal:12,borderRadius:999,borderWidth:1,borderColor:'#E6D8CA',backgroundColor:'#FFFDF9'},chipActive:{backgroundColor:'#6F8F68',borderColor:'#6F8F68'},chipText:{fontSize:13,fontWeight:'800',color:'#6E6257'},chipTextActive:{color:'#FFF'},importCard:{backgroundColor:'#FFF0E4',borderRadius:24,padding:18,gap:10},importEmoji:{fontSize:31},heading:{fontSize:18,fontWeight:'900',color:'#302D29'},muted:{fontSize:12.5,lineHeight:18,color:'#81756A'},importActions:{gap:8,marginTop:3},bigAction:{backgroundColor:'#F58B57',borderRadius:16,padding:15,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8},bigActionEmoji:{fontSize:17},bigActionText:{color:'#FFF',fontSize:15,fontWeight:'900'},smallAction:{backgroundColor:'#FFFDF9',borderRadius:14,padding:12,alignItems:'center',borderWidth:1,borderColor:'#E7D5C5'},smallActionText:{fontSize:13,fontWeight:'900',color:'#765E49'},privateRow:{flexDirection:'row',alignItems:'center',gap:7,marginTop:3},privateIcon:{fontSize:12},privateText:{flex:1,fontSize:10.5,lineHeight:15,color:'#887665'},review:{backgroundColor:'#EEF4EA',borderRadius:24,padding:16,gap:11},reviewTitle:{fontSize:19,fontWeight:'900',color:'#30432F'},ocrText:{fontSize:12.5,lineHeight:18,color:'#586A56',backgroundColor:'#FFFDF9',borderRadius:14,padding:12},candidate:{backgroundColor:'#FFFDF9',borderRadius:17,padding:14,borderWidth:1,borderColor:'#DDE8D8'},candidateHead:{flexDirection:'row',justifyContent:'space-between'},candidateType:{fontSize:10.5,fontWeight:'900',letterSpacing:.6,textTransform:'uppercase',color:'#688064'},confidence:{fontSize:10.5,fontWeight:'800',color:'#8A9A86'},candidateTitle:{fontSize:16,fontWeight:'900',color:'#30432F',marginTop:5},meta:{fontSize:11.5,lineHeight:17,color:'#8A7E72',marginTop:3},candidateCopy:{fontSize:12.5,lineHeight:18,color:'#657262',marginTop:5},materialText:{fontSize:12,fontWeight:'800',color:'#587054',marginTop:6},actions:{flexDirection:'row',flexWrap:'wrap',gap:8,alignItems:'center',marginTop:9},confirm:{backgroundColor:'#6F8F68',borderRadius:11,paddingVertical:9,paddingHorizontal:12},confirmText:{color:'#FFF',fontSize:12,fontWeight:'900'},discard:{paddingVertical:9,paddingHorizontal:10},discardText:{fontSize:12,fontWeight:'800',color:'#A65E55'},resolved:{fontSize:12,fontWeight:'900',color:'#5E7D59',marginTop:8},recent:{backgroundColor:'#FFFDF9',borderRadius:20,borderWidth:1,borderColor:'#E8DDD1',padding:14,gap:3},sectionHead:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},count:{fontSize:11,fontWeight:'900',color:'#9A8C80'},docRow:{flexDirection:'row',alignItems:'center',gap:9,borderTopWidth:1,borderTopColor:'#F0E6DD',paddingVertical:10},docIcon:{width:34,height:34,borderRadius:11,backgroundColor:'#FFF0E4',alignItems:'center',justifyContent:'center'},flex:{flex:1},docName:{fontSize:13.5,fontWeight:'800',color:'#302D29'},linkButton:{padding:7},linkText:{fontSize:11.5,fontWeight:'900',color:'#5D7A58'},deleteText:{fontSize:22,color:'#B78B80',paddingHorizontal:4},divider:{height:1,backgroundColor:'#EADDD2',marginVertical:5},segment:{flexDirection:'row',backgroundColor:'#F1E6DC',padding:4,borderRadius:15},segmentButton:{flex:1,padding:11,alignItems:'center',borderRadius:12},segmentActive:{backgroundColor:'#FFFDF9'},segmentText:{fontSize:13,fontWeight:'800',color:'#8A7A6C'},segmentTextActive:{color:'#3A342F'},input:{backgroundColor:'#FFFDF9',borderWidth:1,borderColor:'#E8DDD1',borderRadius:16,padding:14,fontSize:15.5,color:'#2B2926'},notes:{minHeight:82,textAlignVertical:'top'},health:{fontSize:12,lineHeight:18,color:'#7A626D'},save:{backgroundColor:'#F58B57',borderRadius:16,padding:16,alignItems:'center'},saveText:{color:'#FFF',fontSize:15,fontWeight:'900'},disabled:{opacity:.5}});

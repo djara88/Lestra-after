@@ -28,15 +28,29 @@ export default function Index() {
     async function routeSession() {
       setLoadError(false);
 
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      // getUser() returns AuthSessionMissingError on a fresh install. That is not
+      // a connectivity/family error; it simply means the user must authenticate.
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (!active) return;
 
-      if (userError) {
+      if (sessionError) {
         setLoadError(true);
         return;
       }
 
-      if (!user) {
+      if (!sessionData.session) {
+        router.replace('/login');
+        return;
+      }
+
+      // Once a local session exists, validate it with the Auth server before
+      // requesting family data. An expired/invalid token returns to login.
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (!active) return;
+
+      if (userError || !user) {
+        await supabase.auth.signOut({ scope: 'local' });
+        if (!active) return;
         router.replace('/login');
         return;
       }

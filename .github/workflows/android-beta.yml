@@ -1,0 +1,83 @@
+name: Android Beta APK
+
+on:
+  push:
+    branches:
+      - stabilize/after-0.5.11
+      - fix/after-beta-0.5.11-google-oauth
+      - fix/after-beta-0.5.7-google-oauth
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://yihcktculicmuuzzxzik.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ZpxmCzRu3-CQ8LIUXhdZtA_lOhk_wzU
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 1017541924770-8v7k9m0mj56mj03cr7r11hdoec9b5cdp.apps.googleusercontent.com
+      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID }}
+      EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME: ${{ secrets.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - run: npm install --ignore-scripts --no-fund
+      - run: npm run typecheck
+
+      - name: Validate Expo dependency compatibility
+        run: npx expo install --check
+
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Configure Gradle for GitHub runner
+        run: |
+          cat >> android/gradle.properties <<'EOF'
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.workers.max=2
+          org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8
+          kotlin.compiler.execution.strategy=in-process
+          EOF
+
+      - name: Build standalone release APK with bundled JavaScript
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a
+
+      - name: Verify bundled JavaScript is packaged
+        run: |
+          test -f android/app/build/outputs/apk/release/app-release.apk
+          unzip -l android/app/build/outputs/apk/release/app-release.apk | grep -E 'assets/index.android.bundle|assets/.*\.bundle' >/dev/null
+
+      - name: Keep APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lestra-After-Beta-0.5.11
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Publish beta APK as GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.11.apk
+          if gh release view after-beta-0.5.11 >/dev/null 2>&1; then
+            gh release upload after-beta-0.5.11 Lestra-After-Beta-0.5.11.apk --clobber
+          else
+            gh release create after-beta-0.5.11 Lestra-After-Beta-0.5.11.apk               --title "Lestra After Beta 0.5.11"               --notes "Mochila automática por horario: cuaderno y libro por asignatura, checklist infantil y configuración adulta separada."               --prerelease               --target "$GITHUB_SHA"
+          fi

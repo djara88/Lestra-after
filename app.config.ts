@@ -1,29 +1,49 @@
 import type { ExpoConfig, ConfigContext } from 'expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => {
-  const iosUrlScheme = process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME;
-  const googlePlugin: string | [string, { iosUrlScheme: string }] = iosUrlScheme
-    ? ['@react-native-google-signin/google-signin', { iosUrlScheme }]
-    : '@react-native-google-signin/google-signin';
-
   return {
     ...config,
     name: 'Lestra After',
     slug: 'lestra-after',
     scheme: 'lestraafter',
-    version: '0.4.0',
+    version: '0.5.11',
     orientation: 'portrait',
-    userInterfaceStyle: 'automatic',
-    newArchEnabled: true,
+    userInterfaceStyle: 'light',
+    // Stabilization build: classic architecture reduces Android build memory
+    // while we validate the real product flow on physical devices.
+    newArchEnabled: false,
     ios: {
       supportsTablet: false,
       bundleIdentifier: 'app.lestra.after',
     },
     android: {
       package: 'app.lestra.after',
-      adaptiveIcon: { backgroundColor: '#F4F5F7' },
+      versionCode: 12,
+      adaptiveIcon: { backgroundColor: '#FFF8F1' },
     },
-    plugins: ['expo-router', 'expo-secure-store', googlePlugin],
+    plugins: [
+      'expo-router',
+      'expo-secure-store',
+      ['expo-web-browser', { experimentalLauncherActivity: false }],
+      [
+        'expo-image-picker',
+        {
+          cameraPermission: 'After usa la cámara solo para fotografiar comunicaciones y tareas del colegio.',
+          photosPermission: 'After accede a tus fotos solo cuando eliges una imagen para leerla.',
+          microphonePermission: false,
+        },
+      ],
+      ['expo-mlkit-ocr', { iosEngine: 'auto' }],
+      [
+        'expo-build-properties',
+        {
+          ios: {
+            deploymentTarget: '16.0',
+            useFrameworks: 'static',
+          },
+        },
+      ],
+    ],
     experiments: { typedRoutes: true },
   };
 };
