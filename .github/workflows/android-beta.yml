@@ -3,8 +3,8 @@ name: Android Beta APK
 on:
   push:
     branches:
-      - stabilize/after-0.5.10
-      - fix/after-beta-0.5.10-google-oauth
+      - stabilize/after-0.5.11
+      - fix/after-beta-0.5.11-google-oauth
       - fix/after-beta-0.5.7-google-oauth
   workflow_dispatch:
 
@@ -67,7 +67,7 @@ jobs:
       - name: Keep APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Lestra-After-Beta-0.5.10
+          name: Lestra-After-Beta-0.5.11
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
@@ -75,9 +75,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.10.apk
-          if gh release view after-beta-0.5.10 >/dev/null 2>&1; then
-            gh release upload after-beta-0.5.10 Lestra-After-Beta-0.5.10.apk --clobber
+          cp android/app/build/outputs/apk/release/app-release.apk Lestra-After-Beta-0.5.11.apk
+          if gh release view after-beta-0.5.11 >/dev/null 2>&1; then
+            gh release upload after-beta-0.5.11 Lestra-After-Beta-0.5.11.apk --clobber
           else
-            gh release create after-beta-0.5.10 Lestra-After-Beta-0.5.10.apk               --title "Lestra After Beta 0.5.10"               --notes "Corrige apertura de Mochila y muestra el detalle de eventos al tocar un día en Calendario mensual."               --prerelease               --target "$GITHUB_SHA"
+            gh release create after-beta-0.5.11 Lestra-After-Beta-0.5.11.apk               --title "Lestra After Beta 0.5.11"               --notes "Mochila automática por horario: cuaderno y libro por asignatura, checklist infantil y configuración adulta separada."               --prerelease               --target "$GITHUB_SHA"
           fi
