@@ -12,6 +12,7 @@ import {
   Text,
   TextInput,
   View,
+  Switch,
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,9 +24,11 @@ import {
   deleteDailyBackpackItem,
   setBackpackKitItems,
   getBackpackStudents,
+  getBackpackMemberRole,
   getBackpackWorkspace,
   saveScheduleEntry,
   setSubjectBackpackItems,
+  setSubjectPackDefaults,
   shiftDate,
   shortTime,
   toggleBackpackItem,
@@ -77,6 +80,10 @@ export default function Backpack() {
   const [showKit, setShowKit] = useState(false);
   const [showKitReview, setShowKitReview] = useState(false);
   const [kitText, setKitText] = useState('');
+  const [memberRole, setMemberRole] = useState('');
+  const [needsNotebook, setNeedsNotebook] = useState(true);
+  const [needsBook, setNeedsBook] = useState(false);
+  const isAdult = ['owner','parent','guardian','adult','admin'].includes(memberRole.toLowerCase());
 
   const loadWorkspace = useCallback(async (id: string, targetDate?: string | null) => {
     if (!id) return;
@@ -97,7 +104,8 @@ export default function Backpack() {
     async function start() {
       setLoading(true);
       try {
-        const list = await getBackpackStudents();
+        const [list, role] = await Promise.all([getBackpackStudents(), getBackpackMemberRole()]);
+        setMemberRole(role);
         if (!active) return;
         setStudents(list);
         const requested = typeof params.studentId === 'string' ? params.studentId : '';
@@ -273,6 +281,8 @@ export default function Backpack() {
 
   function openMaterials(subject: BackpackSubject) {
     setMaterialSubject(subject);
+    setNeedsNotebook(subject.needs_notebook !== false);
+    setNeedsBook(subject.needs_book === true);
     setMaterialText(subject.items.map(item => item.name).join(', '));
   }
 
@@ -281,7 +291,10 @@ export default function Backpack() {
     const items = materialText.split(',').map(value => value.trim()).filter(Boolean).slice(0, 20);
     setBusyKey('materials');
     try {
-      await setSubjectBackpackItems(studentId, materialSubject.id, items);
+      await Promise.all([
+        setSubjectPackDefaults(studentId, materialSubject.id, needsNotebook, needsBook),
+        setSubjectBackpackItems(studentId, materialSubject.id, items),
+      ]);
       setMaterialSubject(null);
       await loadWorkspace(studentId, workspace?.target_date || null);
     } catch (error) {
@@ -311,10 +324,10 @@ export default function Backpack() {
         return <Pressable key={child.id} onPress={() => void changeChild(child.id)} style={[s.childChip, active && s.childChipActive]}><Text style={[s.childChipText, active && s.childChipTextActive]}>{childName(child)}</Text></Pressable>;
       })}</ScrollView> : selectedChild ? <View style={s.singleChild}><Text style={s.singleChildName}>{childName(selectedChild)}</Text><Text style={s.singleChildMeta}>{selectedChild.grade_level || 'Horario escolar'}{selectedChild.school_name ? ` · ${selectedChild.school_name}` : ''}</Text></View> : null}
 
-      <View style={s.segment}>
+      {isAdult ? <View style={s.segment}>
         <Pressable onPress={() => setMode('prepare')} style={[s.segmentButton, mode === 'prepare' && s.segmentActive]}><Text style={[s.segmentText, mode === 'prepare' && s.segmentTextActive]}>Mi mochila</Text></Pressable>
         <Pressable onPress={() => setMode('schedule')} style={[s.segmentButton, mode === 'schedule' && s.segmentActive]}><Text style={[s.segmentText, mode === 'schedule' && s.segmentTextActive]}>Adultos</Text></Pressable>
-      </View>
+      </View> : null}
 
       {mode === 'prepare' && workspace ? <>
         <View style={s.dateCard}>
@@ -339,10 +352,10 @@ export default function Backpack() {
           {workspace.checklist.length === 0 ? <View style={s.empty}><View style={s.emptySignal}><View style={s.emptyLine}/><View style={s.emptyDot}/></View><View style={s.flex}><Text style={s.emptyTitle}>No hay materiales configurados</Text><Text style={s.muted}>En “Horario semanal” agrega lo habitual de cada asignatura. Los materiales extraordinarios de tareas también aparecerán aquí.</Text></View></View> : workspace.checklist.map(item => <Pressable key={item.item_key} accessibilityRole="checkbox" accessibilityState={{ checked: item.packed, disabled: busyKey === item.item_key }} disabled={busyKey === item.item_key} onPress={() => item.source_type === 'kit' && !item.packed ? setShowKitReview(true) : void toggleItem(item.item_key, !item.packed)} style={[s.checkRow, item.packed && s.checkRowDone]}><View style={[s.checkBox, item.packed && s.checkBoxDone]}><View style={item.packed ? s.checkTickA : undefined}/><View style={item.packed ? s.checkTickB : undefined}/></View><View style={s.flex}><Text style={[s.checkTitle, item.packed && s.checkTitleDone]}>{item.name}</Text><Text style={s.meta}>{item.source_type === 'kit' ? 'Todos los días · toca para marcar' : item.source_type === 'academic' || item.source_type === 'manual' ? '⭐ Especial para este día' : item.subject_name}</Text></View></Pressable>)}
         </View>
 
-        <Pressable accessibilityRole="button" onPress={() => setMode('schedule')} style={s.secondary}><AfterGlyph kind="week" active size={22} surface={false}/><View style={s.flex}><Text style={s.secondaryTitle}>Adultos · configurar</Text><Text style={s.secondaryCopy}>Horario, OCR, estuche y materiales habituales.</Text></View><Text style={s.chevron}>›</Text></Pressable>
+        {isAdult ? <Pressable accessibilityRole="button" onPress={() => setMode('schedule')} style={s.secondary}><AfterGlyph kind="week" active size={22} surface={false}/><View style={s.flex}><Text style={s.secondaryTitle}>Adultos · configurar</Text><Text style={s.secondaryCopy}>Horario, OCR, estuche y materiales habituales.</Text></View><Text style={s.chevron}>›</Text></Pressable> : null}
       </> : null}
 
-      {mode === 'schedule' && workspace ? <>
+      {mode === 'schedule' && workspace && isAdult ? <>
         <View style={s.section}><Text style={s.sectionKicker}>CONFIGURACIÓN DE ADULTOS</Text><Text style={s.sectionTitle}>Rutina del niño</Text><Text style={s.sectionCopy}>Esto se configura ocasionalmente. La pantalla “Mi mochila” queda simple para el niño.</Text>
         <Pressable onPress={() => { setKitText((workspace.kit_items||[]).map(x=>x.name).join(', ')); setShowKit(true); }} style={s.secondary}><Text style={{fontSize:22}}>✏️</Text><View style={s.flex}><Text style={s.secondaryTitle}>Configurar estuche</Text><Text style={s.secondaryCopy}>{workspace.kit_items?.length ? workspace.kit_items.map(x=>x.name).join(' · ') : 'Lápiz, goma, sacapuntas, regla…'}</Text></View><Text style={s.chevron}>›</Text></Pressable></View>
         <View style={s.weekdays}>{[1,2,3,4,5].map(day => <Pressable key={day} onPress={() => setWeekday(day)} style={[s.dayChip, weekday === day && s.dayChipActive]}><Text style={[s.dayChipText, weekday === day && s.dayChipTextActive]}>{weekdayLabel(day).slice(0,3)}</Text></Pressable>)}</View>
@@ -355,7 +368,7 @@ export default function Backpack() {
 
         <View style={s.section}>
           <Text style={s.sectionKicker}>POR ASIGNATURA</Text><Text style={s.sectionTitle}>Lo que siempre usa en cada ramo</Text><Text style={s.sectionCopy}>Ejemplo: Matemática → cuaderno, libro y estuche. Esto se reutiliza automáticamente cada vez que esa asignatura aparece en el horario.</Text>
-          {workspace.subjects.length === 0 ? <Text style={s.muted}>Primero agrega una asignatura al horario.</Text> : workspace.subjects.map(subject => <Pressable key={subject.id} onPress={() => openMaterials(subject)} style={s.subjectRow}><View style={s.subjectMark}><View style={s.subjectMarkLine}/><View style={s.subjectMarkDot}/></View><View style={s.flex}><Text style={s.subjectTitle}>{subject.name}</Text><Text numberOfLines={2} style={s.meta}>{subject.items.length ? subject.items.map(item => item.name).join(' · ') : 'Sin materiales habituales'}</Text></View><Text style={s.chevron}>›</Text></Pressable>)}
+          {workspace.subjects.length === 0 ? <Text style={s.muted}>Primero agrega una asignatura al horario.</Text> : workspace.subjects.map(subject => <Pressable key={subject.id} onPress={() => openMaterials(subject)} style={s.subjectRow}><View style={s.subjectMark}><View style={s.subjectMarkLine}/><View style={s.subjectMarkDot}/></View><View style={s.flex}><Text style={s.subjectTitle}>{subject.name}</Text><Text numberOfLines={2} style={s.meta}>{['Cuaderno', subject.needs_book ? 'Libro' : null, ...subject.items.map(item => item.name)].filter(Boolean).join(' · ')}</Text></View><Text style={s.chevron}>›</Text></Pressable>)}
         </View>
       </> : null}
     </ScrollView>
@@ -376,7 +389,7 @@ export default function Backpack() {
     <Modal visible={Boolean(materialSubject)} transparent animationType="slide" onRequestClose={() => setMaterialSubject(null)}>
       <KeyboardAvoidingView style={s.sheetHost} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Pressable style={s.scrim} onPress={() => setMaterialSubject(null)}/>
-        <View style={s.sheet}><View style={s.sheetHandle}/><Text style={s.sheetKicker}>MOCHILA BASE</Text><Text style={s.sheetTitle}>{materialSubject?.name}</Text><Text style={s.sheetHelp}>Escribe los materiales habituales separados por coma. Ej.: cuaderno, libro, estuche.</Text><TextInput style={[s.input,s.multiInput]} value={materialText} onChangeText={setMaterialText} multiline maxLength={1200} placeholder="Cuaderno, libro, estuche" placeholderTextColor="#A59689"/><Pressable disabled={busyKey === 'materials'} onPress={() => void saveMaterials()} style={[s.primary, busyKey === 'materials' && s.disabled]}><Text style={s.primaryText}>{busyKey === 'materials' ? 'Guardando…' : 'Guardar materiales'}</Text></Pressable></View>
+        <View style={s.sheet}><View style={s.sheetHandle}/><Text style={s.sheetKicker}>MOCHILA BASE</Text><Text style={s.sheetTitle}>{materialSubject?.name}</Text><Text style={s.sheetHelp}>Indica qué debe llevar siempre el niño cuando tenga esta asignatura.</Text><View style={s.optionRow}><View style={s.flex}><Text style={s.secondaryTitle}>📓 Cuaderno</Text><Text style={s.secondaryCopy}>Agregar al checklist cada vez que tenga esta asignatura.</Text></View><Switch value={needsNotebook} onValueChange={setNeedsNotebook}/></View><View style={s.optionRow}><View style={s.flex}><Text style={s.secondaryTitle}>📘 Libro</Text><Text style={s.secondaryCopy}>Actívalo sólo si esta asignatura usa libro.</Text></View><Switch value={needsBook} onValueChange={setNeedsBook}/></View><Text style={[s.sheetHelp,{marginTop:10}]}>Otros materiales habituales (opcional)</Text><TextInput style={[s.input,s.multiInput]} value={materialText} onChangeText={setMaterialText} multiline maxLength={1200} placeholder="Ej.: calculadora, carpeta, flauta" placeholderTextColor="#A59689"/><Pressable disabled={busyKey === 'materials'} onPress={() => void saveMaterials()} style={[s.primary, busyKey === 'materials' && s.disabled]}><Text style={s.primaryText}>{busyKey === 'materials' ? 'Guardando…' : 'Guardar configuración'}</Text></Pressable></View>
       </KeyboardAvoidingView>
     </Modal>
   </SafeAreaView>;
@@ -399,5 +412,5 @@ const s=StyleSheet.create({
   addButton:{minHeight:42,justifyContent:'center',paddingHorizontal:13,borderRadius:13,backgroundColor:'#FFE7D7'},addButtonText:{fontSize:12.5,fontWeight:'900',color:'#99502F'},scheduleRow:{minHeight:62,flexDirection:'row',alignItems:'center',gap:11,paddingVertical:9,borderBottomWidth:1,borderBottomColor:'#EDE1D7'},deleteButton:{width:44,height:44,alignItems:'center',justifyContent:'center'},deleteText:{fontSize:23,color:'#A96B5F'},
   subjectRow:{minHeight:64,flexDirection:'row',alignItems:'center',gap:11,paddingVertical:9,borderBottomWidth:1,borderBottomColor:'#EDE1D7'},subjectMark:{width:36,height:36,borderRadius:12,backgroundColor:'#EEF3E9',position:'relative'},subjectMarkLine:{position:'absolute',width:17,height:2,borderRadius:2,backgroundColor:'#5B7457',left:9,top:17},subjectMarkDot:{position:'absolute',width:6,height:6,borderRadius:3,backgroundColor:'#F58B57',left:15,top:8},subjectTitle:{fontSize:14.5,fontWeight:'900',color:'#332F2B'},
   primary:{minHeight:50,alignItems:'center',justifyContent:'center',borderRadius:15,backgroundColor:'#F58B57',paddingHorizontal:18},primaryText:{fontSize:14,fontWeight:'900',color:'#FFF'},disabled:{opacity:.55},
-  sheetHost:{flex:1,justifyContent:'flex-end'},scrim:{position:'absolute',top:0,right:0,bottom:0,left:0,backgroundColor:'rgba(35,31,28,.38)'},sheet:{backgroundColor:'#FFF9F3',borderTopLeftRadius:28,borderTopRightRadius:28,paddingHorizontal:18,paddingTop:11,paddingBottom:Platform.OS==='ios'?34:22,gap:12},sheetHandle:{width:44,height:5,borderRadius:999,backgroundColor:'#D8CEC5',alignSelf:'center',marginBottom:5},sheetKicker:{fontSize:10,fontWeight:'900',letterSpacing:1.1,color:'#8A7A6E'},sheetTitle:{fontSize:24,fontWeight:'900',color:'#302D29'},sheetHelp:{fontSize:12.5,lineHeight:18,color:'#82766C'},input:{minHeight:50,borderRadius:15,borderWidth:1,borderColor:'#E1D6CB',backgroundColor:'#FFFDF9',paddingHorizontal:14,fontSize:14,color:'#332F2B'},inputRow:{flexDirection:'row',gap:9},half:{flex:1},multiInput:{minHeight:100,textAlignVertical:'top',paddingTop:14},
+  sheetHost:{flex:1,justifyContent:'flex-end'},scrim:{position:'absolute',top:0,right:0,bottom:0,left:0,backgroundColor:'rgba(35,31,28,.38)'},sheet:{backgroundColor:'#FFF9F3',borderTopLeftRadius:28,borderTopRightRadius:28,paddingHorizontal:18,paddingTop:11,paddingBottom:Platform.OS==='ios'?34:22,gap:12},sheetHandle:{width:44,height:5,borderRadius:999,backgroundColor:'#D8CEC5',alignSelf:'center',marginBottom:5},sheetKicker:{fontSize:10,fontWeight:'900',letterSpacing:1.1,color:'#8A7A6E'},sheetTitle:{fontSize:24,fontWeight:'900',color:'#302D29'},optionRow:{flexDirection:'row',alignItems:'center',gap:12,paddingVertical:11,borderBottomWidth:1,borderBottomColor:'#EEE2D8'},sheetHelp:{fontSize:12.5,lineHeight:18,color:'#82766C'},input:{minHeight:50,borderRadius:15,borderWidth:1,borderColor:'#E1D6CB',backgroundColor:'#FFFDF9',paddingHorizontal:14,fontSize:14,color:'#332F2B'},inputRow:{flexDirection:'row',gap:9},half:{flex:1},multiInput:{minHeight:100,textAlignVertical:'top',paddingTop:14},
 });
